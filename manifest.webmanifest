@@ -1,0 +1,19 @@
+{
+  "name": "くもスケッチ",
+  "short_name": "くもスケッチ",
+  "description": "空に雲を描く、静かなスケッチ帳。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080c16",
+  "theme_color": "#6E86A6",
+  "categories": ["entertainment", "lifestyle", "graphics"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
