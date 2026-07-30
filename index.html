@@ -83,8 +83,13 @@
     padding:8px 10px calc(env(safe-area-inset-bottom) + 10px);
     display:flex;flex-direction:column;gap:8px;align-items:center;
   }
+  .controls{display:flex;align-items:stretch;gap:6px;width:min(420px,94%);}
+  .iconbtn{
+    flex:0 0 auto;width:42px;justify-content:center;padding:0;border-radius:15px;
+  }
+  .iconbtn svg{width:20px;height:20px;opacity:.85;}
   .sizewrap{
-    width:min(400px,90%);background:var(--panel);border:1px solid var(--line);
+    flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);
     backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
     border-radius:15px;padding:5px 14px;display:flex;align-items:center;gap:10px;
   }
@@ -177,23 +182,35 @@
     <span>くもスケッチ</span>
   </button>
   <div class="menu" id="menu" role="menu">
-    <button class="mi" id="skyBtn" role="menuitem"><span>空</span><em>色・太陽・風</em></button>
     <button class="mi" id="soundBtn" role="menuitem"><span>音</span><em id="soundState">環境音 — 切</em></button>
-    <div class="sep"></div>
-    <button class="mi" id="undoBtn" role="menuitem"><span>元に戻す</span><em>直前の一手だけ取り消す</em></button>
-    <button class="mi danger" id="clearBtn" role="menuitem"><span>リセット</span><em id="clearState">描いた雲をすべて消す</em></button>
-    <div class="sep"></div>
     <button class="mi" id="saveBtn" role="menuitem"><span>保存</span><em>画像として残す</em></button>
+    <div class="sep"></div>
+    <button class="mi danger" id="clearBtn" role="menuitem"><span>リセット</span><em id="clearState">描いた雲をすべて消す</em></button>
   </div>
 </div>
 
 <p class="hint ui" id="hint">空に触れて、雲を置く</p>
 
 <div class="dock ui">
-  <div class="sizewrap">
-    <span>小</span>
-    <input type="range" id="size" min="35" max="200" value="100" aria-label="雲の大きさ">
-    <span>大</span>
+  <div class="controls">
+    <button class="iconbtn" id="skyBtn" aria-label="空の設定" title="空">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <circle cx="12" cy="10" r="3.6" fill="currentColor" stroke="none"/>
+        <path d="M12 2.6v1.9M12 15.5v1.9M4.5 10h1.9M17.6 10h1.9M6.7 4.7l1.3 1.3M16 14l1.3 1.3M17.3 4.7L16 6M8 14l-1.3 1.3"/>
+        <path d="M3 20.6h18" stroke-width="1.9"/>
+      </svg>
+    </button>
+    <button class="iconbtn" id="undoBtn" aria-label="元に戻す" title="元に戻す">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9h9.5a5.5 5.5 0 1 1 0 11H8"/>
+        <path d="M7.6 5.2L3.8 9l3.8 3.8"/>
+      </svg>
+    </button>
+    <div class="sizewrap">
+      <span>小</span>
+      <input type="range" id="size" min="35" max="200" value="100" aria-label="雲の大きさ">
+      <span>大</span>
+    </div>
   </div>
   <div class="tools" id="tools"></div>
 </div>
@@ -206,14 +223,14 @@
   <div class="rows">
     <div class="row"><label for="cTop">空・上</label><input type="color" id="cTop"></div>
     <div class="row"><label for="cBot">空・下</label><input type="color" id="cBot"></div>
-    <div class="row"><label for="cSun">太陽</label><input type="color" id="cSun"></div>
+    <div class="row"><label for="cSun" id="lbSun">太陽</label><input type="color" id="cSun"></div>
     <div class="row"><label for="cCloud">雲</label><input type="color" id="cCloud"></div>
-    <div class="row wide"><label for="sunSize">太陽の大きさ</label>
+    <div class="row wide"><label for="sunSize" id="lbSunSize">太陽の大きさ</label>
       <input type="range" id="sunSize" min="20" max="180" value="90" style="max-width:56%"></div>
     <div class="row wide"><label for="windR">風 — 雲が流れる速さ</label>
-      <input type="range" id="windR" min="0" max="100" value="26" style="max-width:56%"></div>
+      <input type="range" id="windR" min="0" max="100" value="5" style="max-width:56%"></div>
   </div>
-  <p class="hintline">「太陽」を選んで空をなぞると太陽が動き、雲の陰影も付け直されます。</p>
+  <p class="hintline">「太陽」(夜は「月」)を選んで空をなぞると光源が動き、雲の陰影も付け直されます。</p>
 </div>
 
 <div class="veil" id="veil">
@@ -240,7 +257,7 @@ var THEMES={
   yoru    :{name:'夜',    top:'#03060F',bot:'#0E1A38',sun:'#E7EEFF',dark:'#0F1832',mid:'#28325A',light:'#68779F',rim:'#D8E2FF'}
 };
 var S={theme:'yuyake',top:'',bot:'',sun:'',dark:'',mid:'',light:'',rim:'',
-       sunX:0.5,sunY:0.30,sunR:0.9,wind:0.26,tool:'cumulus',size:1};
+       sunX:0.5,sunY:0.30,sunR:0.9,wind:0.05,tool:'cumulus',size:1};
 (function(t){for(var k in t)if(k!=='name')S[k]=t[k];})(THEMES.yuyake);
 var strokes=[];
 
@@ -487,18 +504,24 @@ function renderCloud(target,s){
   }
   tx.restore();
 }
-function stampErase(target,s){
-  var g=target.x;g.save();g.globalCompositeOperation='destination-out';
+function eraseAt(g,cx,cy,R,wrap){
+  g.save();g.globalCompositeOperation='destination-out';
   var offs=[0];
-  if(s.x-s.R<0)offs.push(W);
-  if(s.x+s.R>W)offs.push(-W);
+  if(wrap){ if(cx-R<0)offs.push(W); if(cx+R>W)offs.push(-W); }
   for(var i=0;i<offs.length;i++){
-    var cx=s.x+offs[i];
-    var gr=g.createRadialGradient(cx,s.y,0,cx,s.y,s.R);
+    var x=cx+offs[i];
+    var gr=g.createRadialGradient(x,cy,0,x,cy,R);
     gr.addColorStop(0,'rgba(0,0,0,1)');gr.addColorStop(.55,'rgba(0,0,0,1)');gr.addColorStop(1,'rgba(0,0,0,0)');
-    g.fillStyle=gr;g.beginPath();g.arc(cx,s.y,s.R,0,6.2832);g.fill();
+    g.fillStyle=gr;g.beginPath();g.arc(x,cy,R,0,6.2832);g.fill();
   }
   g.restore();
+}
+/* the eraser takes out clouds *and* light shafts.
+   clouds drift with the wind, the shafts stay put, so each layer
+   gets erased in its own coordinate space. */
+function stampErase(s){
+  eraseAt(cloud.x,s.x,s.y,s.R,true);
+  eraseAt(rays.x,(s.rx===undefined?s.x:s.rx),s.y,s.R,false);
 }
 function stampRay(s){
   var sp=sunPos(),vx=s.x-sp.x,vy=s.y-sp.y,L=Math.max(70,Math.hypot(vx,vy));
@@ -550,17 +573,7 @@ function composite(now){
   starA=clamp((0.30-lum(S.top))*3.4,0,1);
   if(starA>0.01){ctx.globalAlpha=starA*(0.75+0.25*Math.sin(now/2600));ctx.drawImage(starC.c,0,0,W,H);ctx.globalAlpha=1;}
 
-  var sp=sunPos(),puls=1+0.022*Math.sin(now/3400),glow=Math.min(W,H)*(0.16+0.5*S.sunR)*puls;
-  ctx.globalCompositeOperation='lighter';
-  var gg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,glow);
-  gg.addColorStop(0,rgba(S.sun,.92));gg.addColorStop(.09,rgba(S.sun,.5));
-  gg.addColorStop(.4,rgba(S.sun,.14));gg.addColorStop(1,rgba(S.sun,0));
-  ctx.fillStyle=gg;ctx.fillRect(0,0,W,H);
-  var core=Math.min(W,H)*0.017*(0.5+S.sunR)*puls;
-  var cg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,core);
-  cg.addColorStop(0,'rgba(255,255,255,.98)');cg.addColorStop(.55,rgba(S.sun,.88));cg.addColorStop(1,rgba(S.sun,0));
-  ctx.fillStyle=cg;ctx.beginPath();ctx.arc(sp.x,sp.y,core,0,6.2832);ctx.fill();
-  ctx.globalCompositeOperation='source-over';
+  if(isNight())drawMoon(now); else drawSun(now);
 
   var dr=((drift%W)+W)%W;
   ctx.drawImage(cloud.c,dr,0,W,H);
@@ -582,6 +595,68 @@ function composite(now){
   if(!grainPat)grainPat=ctx.createPattern(grainC.c,'repeat');
   if(grainPat){ctx.fillStyle=grainPat;ctx.fillRect(0,0,W,H);}
   ctx.globalAlpha=1;
+}
+function isNight(){return lum(S.top)<0.17;}
+function drawSun(now){
+  var sp=sunPos(),m=Math.min(W,H),puls=1+0.022*Math.sin(now/3400);
+  var glow=m*(0.16+0.5*S.sunR)*puls;
+  ctx.globalCompositeOperation='lighter';
+  var gg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,glow);
+  gg.addColorStop(0,rgba(S.sun,.92));gg.addColorStop(.09,rgba(S.sun,.5));
+  gg.addColorStop(.4,rgba(S.sun,.14));gg.addColorStop(1,rgba(S.sun,0));
+  ctx.fillStyle=gg;ctx.fillRect(0,0,W,H);
+  var core=m*0.017*(0.5+S.sunR)*puls;
+  var cg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,core);
+  cg.addColorStop(0,'rgba(255,255,255,.98)');cg.addColorStop(.55,rgba(S.sun,.88));cg.addColorStop(1,rgba(S.sun,0));
+  ctx.fillStyle=cg;ctx.beginPath();ctx.arc(sp.x,sp.y,core,0,6.2832);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+}
+var MARIA=[[-.34,-.20,.36,.30],[.16,-.36,.24,.20],[.28,.18,.32,.26],[-.16,.34,.22,.17],[.00,-.02,.18,.15],[-.40,.10,.16,.20]];
+function drawMoon(now){
+  var sp=sunPos(),m=Math.min(W,H),puls=1+0.012*Math.sin(now/5200);
+  var r=m*0.028*(0.45+S.sunR)*puls;
+
+  /* wide, faint moonlight in the sky */
+  ctx.globalCompositeOperation='lighter';
+  var halo=m*(0.10+0.40*S.sunR);
+  var hg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,halo);
+  hg.addColorStop(0,rgba(S.sun,.34));hg.addColorStop(.10,rgba(S.sun,.14));
+  hg.addColorStop(.38,rgba(S.sun,.05));hg.addColorStop(1,rgba(S.sun,0));
+  ctx.fillStyle=hg;ctx.fillRect(0,0,W,H);
+  /* tight ring right at the limb */
+  var rg=ctx.createRadialGradient(sp.x,sp.y,r*0.9,sp.x,sp.y,r*2.6);
+  rg.addColorStop(0,rgba(S.sun,.30));rg.addColorStop(1,rgba(S.sun,0));
+  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(sp.x,sp.y,r*2.6,0,6.2832);ctx.fill();
+
+  /* the disc itself — solid, with limb darkening */
+  ctx.globalCompositeOperation='source-over';
+  var dg=ctx.createRadialGradient(sp.x-r*0.22,sp.y-r*0.24,r*0.08,sp.x,sp.y,r);
+  dg.addColorStop(0,'#FEFEFF');
+  dg.addColorStop(0.62,rgba(S.sun,1));
+  dg.addColorStop(0.93,mix(S.sun,'#93A2C6',0.30));
+  dg.addColorStop(1,rgba(mix(S.sun,'#93A2C6',0.30),0));
+  ctx.fillStyle=dg;ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,6.2832);ctx.fill();
+
+  /* seas */
+  ctx.save();
+  ctx.beginPath();ctx.arc(sp.x,sp.y,r*0.98,0,6.2832);ctx.clip();
+  if(blurOK)ctx.filter='blur('+Math.max(0.6,r*0.10)+'px)';
+  ctx.fillStyle='rgba(134,148,184,0.30)';
+  for(var i=0;i<MARIA.length;i++){
+    var q=MARIA[i];
+    ctx.beginPath();
+    ctx.ellipse(sp.x+q[0]*r,sp.y+q[1]*r,q[2]*r,q[3]*r,q[0]*1.2,0,6.2832);
+    ctx.fill();
+  }
+  if(blurOK)ctx.filter='none';
+  ctx.restore();
+
+  /* faint bloom over the disc */
+  ctx.globalCompositeOperation='lighter';
+  var bg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r*1.25);
+  bg.addColorStop(0,rgba(S.sun,.22));bg.addColorStop(1,rgba(S.sun,0));
+  ctx.fillStyle=bg;ctx.beginPath();ctx.arc(sp.x,sp.y,r*1.25,0,6.2832);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
 }
 function loop(now){
   if(!lastT)lastT=now;
@@ -605,10 +680,11 @@ function addStroke(x,y,tap,ang){
   var t=S.tool;
   var R=baseR()*(SZ[t]||1);
   var s={t:t,x:t==='ray'?x:layerX(x),y:y,R:R,seed:(Math.random()*1e6)|0,a:ang||0};
+  if(t==='erase')s.rx=x;   /* screen position, for the shaft layer */
   strokes.push(s);
   if(t==='ray'){stampRay(s);return;}
   bakeFresh();
-  if(t==='erase'){stampErase(cloud,s);return;}
+  if(t==='erase'){stampErase(s);return;}
   if(tap){
     fresh.x.setTransform(dpr,0,0,dpr,0,0);fresh.x.clearRect(0,0,W,H);
     renderCloud(fresh,s);freshOn=true;freshA=0;
@@ -621,7 +697,7 @@ function rebuild(){
   freshOn=false;
   for(var i=0;i<strokes.length;i++){
     var s=strokes[i];
-    if(s.t==='erase')stampErase(cloud,s);
+    if(s.t==='erase')stampErase(s);
     else if(s.t==='ray')stampRay(s);
     else renderCloud(cloud,s);
   }
@@ -647,7 +723,9 @@ function down(e){
   e.preventDefault();wake();sheet.classList.remove('open');closeMenu();
   var p=pos(e);hideHint();drawing=true;
   if(S.tool==='sun'){S.sunX=p.x/W;S.sunY=p.y/H;rebuildSoon();return;}
-  lx=p.x;ly=p.y;addStroke(p.x,p.y,true,-0.12);
+  lx=p.x;ly=p.y;
+  if(S.tool==='hikou')return;   /* wait for a drag direction */
+  addStroke(p.x,p.y,true,-0.12);
 }
 function move(e){
   if(!drawing)return;e.preventDefault();
@@ -707,6 +785,15 @@ GROUPS.forEach(function(grp){
 });
 document.getElementById('size').addEventListener('input',function(e){S.size=e.target.value/100;wake();});
 
+/* the sun becomes the moon once the sky is dark enough */
+function updateCelestial(){
+  var n=isNight(),w=n?'月':'太陽';
+  for(var i=0;i<allTools.length;i++)
+    if(allTools[i].dataset.t==='sun')allTools[i].querySelector('small').textContent=w;
+  document.getElementById('lbSun').textContent=w;
+  document.getElementById('lbSunSize').textContent=w+'の大きさ';
+}
+
 var sheet=document.getElementById('sheet');
 var menu=document.getElementById('menu'),logo=document.getElementById('logo');
 function closeMenu(){menu.classList.remove('open');logo.setAttribute('aria-expanded','false');resetClear();}
@@ -717,7 +804,9 @@ logo.addEventListener('click',function(e){
   if(!o)resetClear();
 });
 menu.addEventListener('click',function(e){e.stopPropagation();});
-document.getElementById('skyBtn').addEventListener('click',function(){sheet.classList.add('open');closeMenu();wake();});
+document.getElementById('skyBtn').addEventListener('click',function(e){
+  e.stopPropagation();closeMenu();sheet.classList.toggle('open');wake();
+});
 var presetsEl=document.getElementById('presets');
 var cTop=document.getElementById('cTop'),cBot=document.getElementById('cBot'),
     cSun=document.getElementById('cSun'),cCloud=document.getElementById('cCloud');
@@ -730,11 +819,11 @@ Object.keys(THEMES).forEach(function(k){
   b.addEventListener('click',function(){
     S.theme=k;['top','bot','sun','dark','mid','light','rim'].forEach(function(p){S[p]=t[p];});
     Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed',String(c.dataset.k===k));});
-    syncInputs();rebuildSoon();wake();
+    syncInputs();updateCelestial();rebuildSoon();wake();
   });
   presetsEl.appendChild(b);
 });
-cTop.addEventListener('input',function(e){S.top=e.target.value;rebuildSoon();});
+cTop.addEventListener('input',function(e){S.top=e.target.value;updateCelestial();rebuildSoon();});
 cBot.addEventListener('input',function(e){S.bot=e.target.value;rebuildSoon();});
 cSun.addEventListener('input',function(e){S.sun=e.target.value;S.rim=mix(e.target.value,'#ffffff',0.3);rebuildSoon();});
 cCloud.addEventListener('input',function(e){
@@ -742,7 +831,7 @@ cCloud.addEventListener('input',function(e){
 });
 document.getElementById('sunSize').addEventListener('input',function(e){S.sunR=e.target.value/100;wake();});
 document.getElementById('windR').addEventListener('input',function(e){S.wind=e.target.value/100;wake();});
-syncInputs();
+syncInputs();updateCelestial();
 
 var idleT=null;
 function wake(){
@@ -756,7 +845,9 @@ wake();
 
 var hintEl=document.getElementById('hint'),hintGone=false;
 function hideHint(){if(hintGone)return;hintGone=true;hintEl.style.opacity='0';setTimeout(function(){if(hintEl.parentNode)hintEl.remove();},800);}
-document.getElementById('undoBtn').addEventListener('click',function(){strokes.pop();rebuild();closeMenu();});
+document.getElementById('undoBtn').addEventListener('click',function(e){
+  e.stopPropagation();strokes.pop();rebuild();wake();
+});
 var clearBtn=document.getElementById('clearBtn'),clearState=document.getElementById('clearState'),
     clearArmed=false,clearT=null;
 function resetClear(){clearArmed=false;clearTimeout(clearT);clearState.textContent='描いた雲をすべて消す';}
