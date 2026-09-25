@@ -22,18 +22,22 @@
     --line:rgba(255,255,255,.16);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;}
+  /* ホーム画面から開くと、iOS は「割合で数えた高さ」を上の安全域ぶん短く渡す
+     (描ける873 / 実際932)。根っこを 100vh にすると渡される高さ自体が 932 になる。
+     全画面のものは fixed ではなく、この根っこの中に absolute で置く */
+  html,body{margin:0;height:100vh;position:relative;overflow:hidden;overscroll-behavior:none;}
+  html{background:#080c16;}
   body{
     font-family:"Hiragino Maru Gothic ProN","ヒラギノ丸ゴ ProN",-apple-system,"Segoe UI",system-ui,sans-serif;
     background:#080c16;color:var(--ink);-webkit-user-select:none;user-select:none;
   }
-  canvas#cv{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+  canvas#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 
   .ui{transition:opacity .9s ease;}
   body.dim .ui{opacity:.28;}
 
   .top{
-    position:fixed;top:0;left:0;right:0;z-index:5;
+    position:absolute;top:0;left:0;right:0;z-index:5;
     padding:calc(env(safe-area-inset-top) + 10px) 12px 0;
     display:flex;gap:7px;align-items:flex-start;pointer-events:none;
   }
@@ -76,10 +80,11 @@
   .mi em{font-style:normal;font-size:10.5px;opacity:.5;letter-spacing:.06em;}
   .mi:active{background:rgba(255,255,255,.12);}
   .mi.danger span{color:#FFB4A8;}
+  .ver{font-size:10px;opacity:.38;letter-spacing:.04em;padding:4px 13px 5px;}
   .sep{height:1px;background:rgba(255,255,255,.1);margin:5px 12px;}
 
   .dock{
-    position:fixed;left:0;right:0;bottom:0;z-index:5;
+    position:absolute;left:0;right:0;bottom:0;z-index:5;
     padding:8px 10px calc(env(safe-area-inset-bottom) + 10px);
     display:flex;flex-direction:column;gap:8px;align-items:center;
   }
@@ -126,7 +131,7 @@
   .tool[aria-pressed=true] svg,.tool[aria-pressed=true] small{opacity:1;}
 
   .sheet{
-    position:fixed;left:0;right:0;bottom:0;z-index:20;
+    position:absolute;left:0;right:0;bottom:0;z-index:20;
     background:var(--panel-solid);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
     border-radius:26px 26px 0 0;border-top:1px solid var(--line);
     padding:12px 18px calc(env(safe-area-inset-bottom) + 18px);
@@ -157,12 +162,12 @@
   .hintline{font-size:11px;opacity:.5;margin:14px 0 0;line-height:1.7;}
 
   .hint{
-    position:fixed;left:50%;top:52%;transform:translate(-50%,-50%);z-index:4;
+    position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);z-index:4;
     font-size:13px;letter-spacing:.14em;color:rgba(255,255,255,.86);
     text-shadow:0 1px 14px rgba(0,0,0,.4);pointer-events:none;transition:opacity .7s;
   }
   .veil{
-    position:fixed;inset:0;z-index:30;background:rgba(6,9,16,.93);
+    position:absolute;inset:0;z-index:30;background:rgba(6,9,16,.93);
     display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;
   }
   .veil.open{display:flex;}
@@ -186,6 +191,7 @@
     <button class="mi" id="saveBtn" role="menuitem"><span>保存</span><em>画像として残す</em></button>
     <div class="sep"></div>
     <button class="mi danger" id="clearBtn" role="menuitem"><span>リセット</span><em id="clearState">描いた雲をすべて消す</em></button>
+    <div class="ver" id="ver"></div>
   </div>
 </div>
 
@@ -242,6 +248,7 @@
 <script>
 (function(){
 'use strict';
+var VER='v5';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -547,6 +554,7 @@ function buildSky(){
   var hz=g.createLinearGradient(0,H*0.55,0,H);
   hz.addColorStop(0,rgba(S.bot,0));hz.addColorStop(1,rgba(S.bot,0.55));
   g.fillStyle=hz;g.fillRect(0,H*0.55,W,H*0.45);
+  document.documentElement.style.backgroundColor=S.bot;
 }
 function buildStars(){
   var g=starC.x;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
@@ -708,7 +716,11 @@ function rebuildSoon(){if(pend)return;pend=true;requestAnimationFrame(function()
 /* ================= resize ================= */
 function resize(){
   dpr=Math.min(window.devicePixelRatio||1,2);
-  W=window.innerWidth;H=window.innerHeight;
+  /* 窓の値ではなく、根っこに敷いたキャンバスの実寸を使う。
+     回転中などに 0 で渡ってくることがあるので、そのときは前の大きさのまま */
+  var b=cv.getBoundingClientRect(),w=Math.round(b.width),h=Math.round(b.height);
+  if(!(w>=1&&h>=1))return;
+  W=w;H=h;window.__kumoH=H;
   [{c:cv,x:ctx},cloud,fresh,rays,skyC,starC].forEach(function(l){
     l.c.width=Math.round(W*dpr);l.c.height=Math.round(H*dpr);l.x.setTransform(dpr,0,0,dpr,0,0);
   });
@@ -796,11 +808,20 @@ function updateCelestial(){
 
 var sheet=document.getElementById('sheet');
 var menu=document.getElementById('menu'),logo=document.getElementById('logo');
+/* 版と高さの診断: 描ける(キャンバス) / 窓(innerHeight) / vh。直っていれば 3 つとも同じ */
+var vhProbe=document.createElement('div');
+vhProbe.style.cssText='position:absolute;top:0;width:0;height:100vh;visibility:hidden;pointer-events:none;';
+document.body.appendChild(vhProbe);
+function showVer(){
+  document.getElementById('ver').textContent=
+    VER+' · 描ける'+H+' / 窓'+window.innerHeight+' / vh'+Math.round(vhProbe.getBoundingClientRect().height);
+}
 function closeMenu(){menu.classList.remove('open');logo.setAttribute('aria-expanded','false');resetClear();}
 logo.addEventListener('click',function(e){
   e.stopPropagation();wake();
   var o=!menu.classList.contains('open');
   menu.classList.toggle('open',o);logo.setAttribute('aria-expanded',String(o));
+  if(o)showVer();
   if(!o)resetClear();
 });
 menu.addEventListener('click',function(e){e.stopPropagation();});

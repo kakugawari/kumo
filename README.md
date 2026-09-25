@@ -8,6 +8,7 @@
 index.html            アプリ本体(HTML/CSS/JS すべて内包)
 manifest.webmanifest  PWA マニフェスト
 sw.js                 Service Worker(オフライン対応・キャッシュ先読み)
+browser-test.js       ブラウザで動かす見張り (npm run test:ui)
                 アイコン一式(192 / 512 / maskable / apple-touch / favicon)
 ```
 
@@ -23,6 +24,10 @@ sw.js                 Service Worker(オフライン対応・キャッシュ先�
 
 `index.html` を書き換えたら **`sw.js` の `CACHE` を `kumo-sketch-v2` のように上げる**こと。
 上げないと端末側の古いキャッシュが残り、更新が反映されません。
+あわせて `index.html` の `VER` も同じ番号にする(左上のロゴ → メニューのいちばん下に出る)。
+端末に届いたかは、この番号で確かめる。
+
+`npm run test:ui` でブラウザの見張りが動く(要 playwright)。
 
 ## 描き方
 

@@ -1,0 +1,7 @@
+{
+  "name": "kumo-sketch",
+  "private": true,
+  "scripts": {
+    "test:ui": "node browser-test.js"
+  }
+}

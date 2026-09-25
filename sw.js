@@ -1,5 +1,5 @@
 /* くもスケッチ - service worker */
-const CACHE = 'kumo-sketch-v4';
+const CACHE = 'kumo-sketch-v5';
 const ASSETS = [
   './',
   './index.html',
