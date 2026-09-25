@@ -173,6 +173,14 @@
   .veil.open{display:flex;}
   .veil img{max-width:100%;max-height:70vh;border-radius:8px;box-shadow:0 12px 50px rgba(0,0,0,.6);}
   .veil p{font-size:12px;opacity:.7;margin:0;}
+  /* 縦で使うアプリ。iOS はマニフェストの縦固定を無視するので、横にされたら幕を出す */
+  .turn{
+    position:absolute;inset:0;z-index:40;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    background:#0b1020;color:var(--ink);font-size:13px;letter-spacing:.14em;
+  }
+  .turn svg{width:34px;height:34px;opacity:.8;}
+  body.sideways .turn{display:flex;}
   @media (prefers-reduced-motion:reduce){.sheet{transition:none;}.ui{transition:none;}}
 </style>
 </head>
@@ -239,6 +247,13 @@
   <p class="hintline">「太陽」(夜は「月」)を選んで空をなぞると光源が動き、雲の陰影も付け直されます。</p>
 </div>
 
+<div class="turn" id="turn" aria-live="polite">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="7" y="2.5" width="10" height="19" rx="2.4"/><path d="M10.5 18.5h3"/>
+  </svg>
+  <p>縦に持つと、空が描けます</p>
+</div>
+
 <div class="veil" id="veil">
   <img id="veilImg" alt="描いた空">
   <p>長押しして「イメージを保存」</p>
@@ -248,7 +263,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v6';   /* sw.js の CACHE と揃える */
+var VER='v7';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -760,6 +775,11 @@ function resize(){
      回転中などに 0 で渡ってくることがあるので、そのときは前の大きさのまま */
   var b=cv.getBoundingClientRect(),w=Math.round(b.width),h=Math.round(b.height);
   if(!(w>=1&&h>=1))return;
+  /* 横にされたら幕を出し、組み直さない。雲は画面の点で覚えているので、
+     横幅で組み直すと位置がずれる。縦に戻れば同じ大きさで組み直すだけ */
+  var side=w>h;
+  document.body.classList.toggle('sideways',side);
+  if(side){drawing=false;return;}
   W=w;H=h;window.__kumoH=H;
   [{c:cv,x:ctx},cloud,rays,skyC,starC].forEach(function(l){
     l.c.width=Math.round(W*dpr);l.c.height=Math.round(H*dpr);l.x.setTransform(dpr,0,0,dpr,0,0);

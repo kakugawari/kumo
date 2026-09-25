@@ -111,6 +111,22 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('描き直しで雲の形を作り直さない', perf.kept);
   check('太陽を動かしたら、少しずつでも全部塗り直し終わる', perf.fresh && perf.frames > 0, 'frames=' + perf.frames);
 
+  // --- 横にされたら幕を出し、描いた空はずらさない (縦で使うアプリ) ---
+  const before = await p.evaluate(() => ({ n: window.__app.strokes().length, W: document.getElementById('cv').width,
+    xs: window.__app.strokes().filter(s => s.pc).map(s => s.pc.box.x).join(',') }));
+  await p.setViewportSize({ width: 932, height: 430 }); await p.waitForTimeout(300);
+  const side = await p.evaluate(() => ({ turn: getComputedStyle(document.getElementById('turn')).display,
+    W: document.getElementById('cv').width }));
+  await p.setViewportSize({ width: 430, height: 932 }); await p.waitForTimeout(300);
+  const back = await p.evaluate(() => ({ turn: getComputedStyle(document.getElementById('turn')).display,
+    n: window.__app.strokes().length, W: document.getElementById('cv').width, H: window.__kumoH,
+    xs: window.__app.strokes().filter(s => s.pc).map(s => s.pc.box.x).join(',') }));
+  check('横にすると「縦に持って」の幕が出る', side.turn === 'flex', side.turn);
+  check('横のあいだは組み直さない', side.W === before.W, before.W + '→' + side.W);
+  check('縦に戻すと幕が消え、描いた雲は同じ位置のまま', back.turn === 'none' && back.H === 932 && back.n === before.n && back.xs === before.xs, JSON.stringify({ turn: back.turn, H: back.H, n: back.n }));
+  const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.webmanifest'), 'utf8'));
+  check('マニフェストが縦固定', man.orientation === 'portrait', man.orientation);
+
   check('エラーが出ない', errs.length === 0, errs.join(' | '));
   await b.close(); srv.close();
   console.log(fails ? fails + ' 件 落ちた' : 'すべて通った');
