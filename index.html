@@ -369,12 +369,13 @@
 <script>
 (function(){
 'use strict';
-var VER='v18';   /* sw.js の CACHE と揃える */
+var VER='v19';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
-var cloud=mk(), rays=mk(), den=mk(), glow=mk(), skyC=mk(), starC=mk(), grainC=mk();
+var cloud=mk(), rays=mk(), occ=mk(), den=mk(), glow=mk(), skyC=mk(), starC=mk(), grainC=mk();
 var blurOK=(typeof ctx.filter==='string');
+var raysLit=document.createElement('canvas'),raysLitX=raysLit.getContext('2d');
 
 /* ================= palettes ================= */
 /* 雲の上 (kumoue) はタイトルの空から測った色。真上の濃紺 → 中ほどの青 → 地平線手前の淡い色
@@ -788,15 +789,17 @@ function eraseAt(g,cx,cy,R,wrap){
   }
   g.restore();
 }
-/* the eraser takes out clouds *and* light shafts.
-   clouds drift with the wind, the shafts stay put, so each layer
-   gets erased in its own coordinate space. */
+/* 消しゴムは雲と光の筋の両方を消す。雲は風で流れ、光の筋は太陽についていくので、
+   それぞれの座標で消す (光の筋のほうは、消した所を太陽からの位置で覚えておく) */
 function stampErase(s){
   eraseAt(cloud.x,s.x,s.y,s.R,true);
-  eraseAt(rays.x,(s.rx===undefined?s.x:s.rx),s.y,s.R,false);
+  var sp=sunPos();
+  eraseAt(rays.x,sp.x+s.rdx,sp.y+s.rdy,s.R,false);
 }
+/* 光の筋は、置いたときの「太陽から見た向きと長さ」を覚えておき、いつも今の太陽から差す。
+   (前は置いた点を覚えていたので、太陽を動かすと筋がその点を軸に回ってしまった) */
 function stampRay(s){
-  var sp=sunPos(),vx=s.x-sp.x,vy=s.y-sp.y,L=Math.max(70,Math.hypot(vx,vy));
+  var sp=sunPos(),vx=s.dx,vy=s.dy,L=Math.max(70,Math.hypot(vx,vy));
   var a=Math.atan2(vy,vx),far=L*2.7,Wd=s.R*0.55,g=rays.x;
   g.save();g.translate(sp.x,sp.y);g.rotate(a);g.globalCompositeOperation='lighter';
   for(var i=0;i<6;i++){
@@ -851,6 +854,55 @@ function buildGrain(){
   g.putImageData(img,0,0);
 }
 
+/* ================= light shafts through cloud gaps ================= */
+/* 光の筋に、雲の影を落とす。太陽から外へ向かって雲の濃さを足していき、
+   その先は暗くする (薄明光線: 雲のすき間を抜けた所だけ筋が見える)。
+   まったく消すと筋が途中で切れて見えるので、陰にも RF だけ残す (空で散った光)。
+   荒い升目 (RC pt) で、太陽を中心にした角度 x 距離の表で1度に数えてから、升目ごとに引く。
+   雲はゆっくり流れるので、毎コマではなく、動いたときと描き足したときだけ数え直す */
+var RC=4,RK=0.14,RF=0.15,raysDirty=true,raysDr=-1e9,raysT=0,raysN=0,rayPolar=null,rayExp=null;
+function hasRays(){
+  for(var i=0;i<strokes.length;i++)if(strokes[i].t==='ray')return true;
+  return false;
+}
+function shadeRays(dr,now){
+  raysDirty=false;raysDr=dr;raysT=now;raysN++;
+  var gw=Math.ceil(W/RC),gh=Math.ceil(H/RC),o=occ.c,ox=occ.x;
+  if(o.width!==gw||o.height!==gh){o.width=gw;o.height=gh;}
+  ox.setTransform(1,0,0,1,0,0);ox.clearRect(0,0,gw,gh);
+  ox.drawImage(cloud.c,dr/RC,0,W/RC,H/RC);ox.drawImage(cloud.c,(dr-W)/RC,0,W/RC,H/RC);
+  var im=ox.getImageData(0,0,gw,gh),d=im.data,i,a,r;
+  if(!rayExp){rayExp=new Float32Array(256);for(i=0;i<256;i++)rayExp[i]=Math.exp(-RK*RC*i/255);}
+  var sp=sunPos(),sx=sp.x/RC,sy=sp.y/RC,
+      NR=Math.ceil(Math.max(Math.hypot(sx,sy),Math.hypot(gw-sx,sy),Math.hypot(sx,gh-sy),Math.hypot(gw-sx,gh-sy)))+2,NA=720;
+  if(!rayPolar||rayPolar.length<NA*NR)rayPolar=new Float32Array(NA*NR);
+  var P=rayPolar;
+  for(a=0;a<NA;a++){
+    var ca=Math.cos(a/NA*6.28318),sa=Math.sin(a/NA*6.28318),T=1,base=a*NR;
+    for(r=0;r<NR;r++){
+      var x=(sx+ca*r)|0,y=(sy+sa*r)|0;
+      if(x>=0&&y>=0&&x<gw&&y<gh)T*=rayExp[d[(y*gw+x)*4+3]];
+      P[base+r]=T;
+    }
+  }
+  for(var gy=0;gy<gh;gy++)for(var gx=0;gx<gw;gx++){
+    var vx=gx+0.5-sx,vy=gy+0.5-sy,rr=Math.hypot(vx,vy),aa=Math.atan2(vy,vx)/6.28318*NA;
+    if(aa<0)aa+=NA;
+    var a0=aa|0,f=aa-a0,a1=(a0+1)%NA,ri=Math.min(NR-1,rr|0);
+    var t=P[(a0%NA)*NR+ri]*(1-f)+P[a1*NR+ri]*f,k=(gy*gw+gx)*4;
+    d[k]=d[k+1]=d[k+2]=255;d[k+3]=((RF+(1-RF)*t)*255)|0;
+  }
+  ox.putImageData(im,0,0);
+  /* 光の筋はぼんやりした物なので、影を掛けた絵は画面の点1つ = 1画素で持つ (画素の倍率ぶん塗る面積が減る) */
+  var c=raysLit;
+  if(c.width!==W||c.height!==H){c.width=W;c.height=H;}
+  var g=raysLitX;g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';
+  g.clearRect(0,0,W,H);g.drawImage(rays.c,0,0,W,H);
+  g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;
+  g.drawImage(o,0,0,gw*RC,gh*RC);
+  g.globalCompositeOperation='source-over';
+}
+
 /* ================= composite ================= */
 var drift=0,lastT=0,liveS=null,liveA=1,starA=0,grainPat=null;
 function composite(now){
@@ -864,6 +916,10 @@ function composite(now){
   if(isNight())drawMoon(now); else drawSun(now);
 
   var dr=((drift%W)+W)%W;
+  if(hasRays()){   /* 光の筋は雲の後ろ。雲の陰になる所は差さない */
+    if(raysDirty||(Math.abs(dr-raysDr)>=RC/2&&now-raysT>100))shadeRays(dr,now);   /* 升目の半分流れたら数え直す */
+    ctx.globalCompositeOperation='lighter';ctx.drawImage(raysLit,0,0,W,H);ctx.globalCompositeOperation='source-over';
+  }
   ctx.drawImage(cloud.c,dr,0,W,H);
   ctx.drawImage(cloud.c,dr-W,0,W,H);
   if(liveS&&liveS.pc&&liveS.pc.cv){   /* 描いている最中の雲は、その雲の絵だけを重ねる (なぞり始めはふわっと出す) */
@@ -873,10 +929,6 @@ function composite(now){
       ctx.drawImage(pc.cv,pc.ox+dr+offs[oi]-W,pc.oy,pc.w/pc.q,pc.h/pc.q);}
     ctx.restore();
   }
-
-  ctx.globalCompositeOperation='lighter';
-  ctx.drawImage(rays.c,0,0,W,H);
-  ctx.globalCompositeOperation='source-over';
 
   var vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.35,W/2,H/2,Math.max(W,H)*0.78);
   vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,0.12)');
@@ -1009,8 +1061,10 @@ var CLOUDS={cumulus:1,nyudo:1,une:1,scale:1,haze:1,cirrus:1,hikou:1};
 /* 光と消しゴムは、前と同じく点ごとの記録 (光は太陽から差す筋、消しゴムは丸く消す) */
 function addStroke(x,y,tap,ang){
   var t=S.tool,R=baseR()*(SZ[t]||1);
-  var s={t:t,x:t==='ray'?x:layerX(x),y:y,R:R,seed:(Math.random()*1e6)|0,a:ang||0,g:gid};
-  if(t==='erase')s.rx=x;
+  var s={t:t,x:t==='ray'?x:layerX(x),y:y,R:R,seed:(Math.random()*1e6)|0,a:ang||0,g:gid},sp=sunPos();
+  if(t==='erase'){s.rdx=x-sp.x;s.rdy=y-sp.y;}
+  if(t==='ray'){s.dx=x-sp.x;s.dy=y-sp.y;}
+  if(t==='ray'||t==='erase')raysDirty=true;
   strokes.push(s);
   if(t==='ray'){stampRay(s);return;}
   if(t==='erase'){stampErase(s);return;}
@@ -1051,7 +1105,7 @@ function cloudEnd(s){
   if(!s.pc){strokes.splice(strokes.indexOf(s),1);return;}
   if(s.pc.key!==lightKey())fieldLight(s,0,0,s.pc.w-1,s.pc.h-1);
   fieldFinish(s);s.pc.cv=null;s.pc.A=null;s.seen=null;
-  layDown(cloud.x,s,1);
+  layDown(cloud.x,s,1);raysDirty=true;
 }
 /* 取っておいた塗りを順に貼り直す。太陽や色が変わって塗りが古い雲は塗り直す。
    budget(ms) を渡すと、その時間を超えたぶんは古い塗りのまま貼り、
@@ -1059,7 +1113,7 @@ function cloudEnd(s){
 function rebuild(budget){
   cloud.x.setTransform(dpr,0,0,dpr,0,0);cloud.x.clearRect(0,0,W,H);
   rays.x.setTransform(dpr,0,0,dpr,0,0);rays.x.clearRect(0,0,W,H);
-  var key=lightKey(),t0=performance.now(),stale=false;
+  var key=lightKey(),t0=performance.now(),stale=false;raysDirty=true;
   for(var i=0;i<strokes.length;i++){
     var s=strokes[i];
     if(s.t==='erase'){stampErase(s);continue;}
@@ -1512,7 +1566,7 @@ titleEl.querySelector('.bg').parentNode.addEventListener('click',function(e){if(
 buildNoise();buildGrain();resize();requestAnimationFrame(loop);
 
 /* テストから中身をのぞく入口 (browser-test.js が使う) */
-window.__app={readSky:readSky,under:function(){return under;},S:S,buildSky:buildSky,strokes:function(){return strokes;},rebuild:rebuild,lightCloud:lightCloud,lightKey:lightKey};
+window.__app={readSky:readSky,under:function(){return under;},S:S,buildSky:buildSky,strokes:function(){return strokes;},rebuild:rebuild,lightCloud:lightCloud,lightKey:lightKey,raysLit:function(){return raysLit;},rays:function(){return rays.c;},raysN:function(){return raysN;},shadeRays:function(){var t=performance.now();shadeRays(((drift%W)+W)%W,t);return performance.now()-t;},cloudC:function(){return cloud.c;}};
 
 /* service worker */
 if('serviceWorker' in navigator){

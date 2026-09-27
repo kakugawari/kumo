@@ -231,6 +231,41 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('飛行機雲が途切れず、玉の連なりに見えない (線に沿った濃さのむら)', cl.hikouGaps === 0 && cl.hikouEven > HIKOU_EVEN, '薄い所=' + cl.hikouGaps + ' むら=' + cl.hikouEven.toFixed(2));
   check('鱗雲は水玉ではなく、ひとつながり (いちばん大きなかたまりが 4割以上)', cl.scaleMain >= 40, cl.scaleMain + '%');
 
+  // --- 光の筋: 太陽についていき、雲の陰には差さない ---
+  const ry = await p.evaluate(async () => {
+    const cv = document.getElementById('cv'), A = window.__app, S = A.S;
+    function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
+    const raf = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const w = document.getElementById('windR'); w.value = 0; w.dispatchEvent(new Event('input'));
+    S.sunX = 0.5; S.sunY = 100 / 932; A.rebuild(); await raf();
+    // 光の筋の重心を、太陽から見た位置で測る (太陽を動かしても、筋が同じ形のままついてくるか)
+    function rayCentroid() { const c = A.rays(), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data, k = c.width / 430;
+      let sx = 0, sy = 0, n = 0; for (let y = 0; y < c.height; y += 4) for (let x = 0; x < c.width; x += 4) { const a = d[(y * c.width + x) * 4 + 3]; sx += x * a; sy += y * a; n += a; }
+      return [sx / n / k - S.sunX * 430, sy / n / k - S.sunY * 932]; }
+    // 筋が画面の外まで伸びると、切れ方で重心が動くので、画面に収まる短い筋で測る
+    document.querySelector('[data-t=ray]').click(); T('touchstart', 190, 180); T('touchend', 0, 0);
+    const c0 = rayCentroid();
+    S.sunX = 0.8; S.sunY = 160 / 932; A.rebuild(); await raf();
+    const c1 = rayCentroid();
+    document.getElementById('undoBtn').click();
+    // 太陽 (215,100) と、なぞった光のあいだの左側にだけ綿雲を置く。雲の先 (陰) と、左右で対になる所 (日なた) の光を比べる
+    S.sunX = 0.5; S.sunY = 100 / 932; A.rebuild();
+    document.querySelector('[data-t=cumulus]').click(); T('touchstart', 150, 280); T('touchend', 0, 0);
+    document.querySelector('[data-t=ray]').click(); T('touchstart', 20, 620);
+    for (let i = 1; i <= 30; i++) T('touchmove', 20 + i * 13, 620); T('touchend', 0, 0);
+    await raf(); await raf();
+    const L = A.raysLit(), lg = L.getContext('2d');
+    function box(x, y) { const d = lg.getImageData(x - 8, y - 8, 16, 16).data; let s = 0; for (let i = 3; i < d.length; i += 4) s += d[i]; return s / (d.length / 4); }
+    const shade = box(80, 470), sun = box(350, 470);
+    document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
+    S.sunX = 0.80; S.sunY = 0.15; A.rebuild();
+    return { move: Math.round(Math.hypot(c1[0] - c0[0], c1[1] - c0[1])), shade: Math.round(shade), sun: Math.round(sun) };
+  });
+  // 前の作りでは、置いた点を軸に筋が回った (太陽を 135pt 動かすと、重心が 100pt 以上ずれる)
+  check('光の筋は太陽についていく (太陽から見た筋の重心のずれ 3pt 以下)', ry.move <= 3, 'ずれ=' + ry.move + 'pt');
+  check('雲の陰には光が差さない (雲の先 ÷ 日なた 0.5 未満)', ry.sun > 10 && ry.shade / ry.sun < 0.5, '陰' + ry.shade + ' / 日なた' + ry.sun);
+
   // --- 道具箱・雲海 ---
   const dk = await p.evaluate(async () => {
     const tools = [...document.querySelectorAll('.tool')];
