@@ -204,9 +204,23 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     return { n: tools.length, uniq: new Set(pos).size, cells: n, cornerMax: Math.max(...corners), dockH: Math.round(dock.height),
       seaDefault, groundDefault, seaOk: sea.complete && sea.naturalWidth > 0, seaPE: getComputedStyle(sea).pointerEvents, seaBottom: Math.round(sea.getBoundingClientRect().bottom) };
   });
+  // 直前に指を離していると、道具箱が戻るまで (0.35秒) 引っ込んでいる。戻ってから測る
+  await p.waitForFunction(() => !document.body.classList.contains('drawing')); await p.waitForTimeout(350);
+  const vis = await p.evaluate(() => {
+    // 道具10個が、横に送らなくても全部見えている (1列で送る作りにしたら右の4つが画面の外に隠れた)
+    const hidden = [...document.querySelectorAll('.tool')].filter(t => { const b = t.getBoundingClientRect(), box = t.parentElement.getBoundingClientRect();
+      return b.left < Math.max(0, box.left) - 1 || b.right > Math.min(430, box.right) + 1 || b.bottom > 932; }).map(t => t.textContent);
+    const over = document.getElementById('tools').scrollWidth - document.getElementById('tools').clientWidth;
+    // 押すボタンは 44pt 以上 (幅も高さも)
+    const small = [...document.querySelectorAll('.dock button, .top > button')].map(e => [e.textContent.trim() || e.id, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)])
+      .filter(q => q[1] < 44 || q[2] < 44);
+    return { hidden, over, small };
+  });
+  check('道具10個が、横に送らなくても全部見えている', vis.hidden.length === 0 && vis.over <= 0, JSON.stringify(vis.hidden) + ' はみ出し=' + vis.over);
+  check('押すボタンは 44pt 以上', vis.small.length === 0, JSON.stringify(vis.small));
   check('道具10個が、それぞれ別の絵を使う', dk.n === 10 && dk.uniq === 10 && dk.cells === 10, dk.n + '個 / 絵' + dk.uniq + '種');
   check('道具の絵の四隅が透明 (市松模様が残っていない)', dk.cornerMax === 0, 'alpha最大=' + dk.cornerMax);
-  check('道具箱が低い (空を広く見せる)', dk.dockH <= 150, dk.dockH + 'px');
+  check('道具箱が低い (空を広く見せる。3段だった頃は 233px)', dk.dockH <= 165, dk.dockH + 'px');
   check('はじめの足もとは「なし」(雲海もシルエットも出さない)', dk.seaDefault === 'none' && dk.groundDefault === 'none', dk.seaDefault + '/' + dk.groundDefault);
   check('雲海を選ぶと画面の下に敷かれ、指を通す', dk.seaOk && dk.seaPE === 'none' && dk.seaBottom === 932, JSON.stringify(dk));
   // 雲海は空に合わせて絵を替える。金の絵の空の部分はマゼンタだったので、残っていないこと
@@ -241,6 +255,12 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     return diff;
   });
   check('保存する絵に雲海も入る', sv > 30, '下端の差=' + sv);
+  // 空の色や足もとを選んだ直後は、シートを薄くして裏を見せ、少しして戻す
+  const pk = await p.evaluate(async () => { const sh = document.getElementById('sheet'); sh.classList.add('open');
+    document.querySelector('.gchip[data-g=mount]').click(); await new Promise(r => setTimeout(r, 400)); const during = +getComputedStyle(sh).opacity;
+    await new Promise(r => setTimeout(r, 1500)); const after = +getComputedStyle(sh).opacity;
+    document.querySelector('.gchip[data-g=none]').click(); await new Promise(r => setTimeout(r, 1500)); sh.classList.remove('open'); return [during, after]; });
+  check('足もとを選んだ直後はシートが薄くなり、裏が見える。少しして戻る', pk[0] < 0.3 && pk[1] > 0.95, JSON.stringify(pk));
   // --- 足もとのシルエット ---
   const gd = await p.evaluate(async () => {
     const el = document.getElementById('ground'), sea = document.getElementById('sea'), out = {};

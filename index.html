@@ -66,7 +66,7 @@
   .on{background:rgba(255,255,255,.9);color:#111827;border-color:transparent;}
 
   .logo{
-    background:transparent;border:0;padding:6px 4px;gap:9px;align-items:center;
+    background:transparent;border:0;padding:12px 6px;margin-top:-6px;min-height:44px;gap:9px;align-items:center;
     font-family:"Hiragino Mincho ProN","Yu Mincho",serif;
     font-size:15px;letter-spacing:.22em;
     text-shadow:0 1px 14px rgba(0,0,0,.35);
@@ -99,16 +99,27 @@
     padding:8px 10px calc(env(safe-area-inset-bottom) + 10px);
     display:flex;flex-direction:column;gap:8px;align-items:center;
   }
-  .controls{display:flex;align-items:stretch;gap:6px;width:min(420px,94%);}
+  /* 上の段: 空の色・戻す・光・太陽・消しゴム・大きさ。下の段: 雲7種。
+     10個を1列に並べて横に送る作りにしたら、右の4つ (畝雲・光・太陽・消しゴム) が画面の外に隠れて
+     見つからなかった。どちらの段も、送らずに全部見える幅に収める */
+  .controls{display:flex;align-items:stretch;gap:5px;width:100%;}
   .iconbtn{
-    flex:0 0 auto;width:42px;justify-content:center;padding:0;border-radius:15px;
+    flex:0 0 auto;width:46px;min-height:50px;justify-content:center;padding:4px 0 3px;border-radius:15px;
+    flex-direction:column;gap:2px;
   }
-  .iconbtn svg{width:20px;height:20px;opacity:.85;}
+  .iconbtn svg{width:22px;height:22px;opacity:.85;}
+  .iconbtn small,.tools2 .tool small{font-size:9.5px;letter-spacing:0;opacity:.8;white-space:nowrap;}
+  .tools2{display:flex;gap:5px;flex:0 0 auto;}
+  .tools2 .tool{width:46px;min-height:50px;padding:4px 0 3px;border-radius:15px;
+    background:var(--panel);border:1px solid var(--line);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+  .tools2 .tool i{width:26px;height:26px;}
   .sizewrap{
-    flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);
+    flex:1;min-width:0;padding-left:10px!important;padding-right:10px!important;background:var(--panel);border:1px solid var(--line);
     backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
     border-radius:15px;padding:5px 14px;display:flex;align-items:center;gap:10px;
   }
+  .sizewrap input{min-width:0;width:100%;}   /* 枠が狭くても、つまみの線がはみ出さない */
   .sizewrap span{font-size:10.5px;opacity:.6;letter-spacing:.12em;}
   input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:22px;background:transparent;}
   input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(255,255,255,.3);border-radius:2px;}
@@ -122,19 +133,18 @@
   /* 道具は1列。絵 (tools.webp、10個を横に並べた1枚) を背景として切り出して使う。
      はみ出したぶんは横に送る。描いている間は下へ引っ込めて、空を広く見せる */
   .tools{
-    display:flex;align-items:center;gap:2px;width:100%;
+    display:flex;align-items:center;justify-content:center;gap:1px;width:100%;
     background:var(--panel);border:1px solid var(--line);
     backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
     border-radius:22px;padding:6px 8px;overflow-x:auto;scrollbar-width:none;
     scroll-snap-type:x proximity;
-    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
-            mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
+
   }
   .tools::-webkit-scrollbar{display:none;}
   .tsep{flex:0 0 1px;align-self:stretch;margin:10px 3px;background:rgba(255,255,255,.16);}
   .tool{
     flex:0 0 auto;border:0;background:transparent;border-radius:16px;scroll-snap-align:center;
-    padding:5px 4px 4px;flex-direction:column;gap:1px;width:62px;
+    padding:5px 2px 4px;flex-direction:column;gap:1px;width:54px;
   }
   .tool i{display:block;width:44px;height:44px;background:url(tools.webp) no-repeat;background-size:1000% 100%;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.18));transition:transform .18s;}
@@ -153,6 +163,9 @@
     transform:translateY(103%);transition:transform .38s cubic-bezier(.22,.9,.3,1);
   }
   .sheet.open{transform:translateY(0);}
+  /* 空の色や足もとを選んだ直後は、シートを薄くして裏の結果を見せる (シートが画面の下半分を覆うため) */
+  .sheet{transition:transform .38s cubic-bezier(.22,.9,.3,1),opacity .25s;}
+  .sheet.peek{opacity:.12;}
   .grab{width:36px;height:4px;border-radius:4px;background:rgba(255,255,255,.28);margin:0 auto 14px;}
   .sheet h2{font-size:10.5px;font-weight:400;letter-spacing:.24em;opacity:.5;margin:16px 0 9px;}
   .sheet h2:first-of-type{margin-top:0;}
@@ -266,14 +279,15 @@
         <circle cx="12" cy="10" r="3.6" fill="currentColor" stroke="none"/>
         <path d="M12 2.6v1.9M12 15.5v1.9M4.5 10h1.9M17.6 10h1.9M6.7 4.7l1.3 1.3M16 14l1.3 1.3M17.3 4.7L16 6M8 14l-1.3 1.3"/>
         <path d="M3 20.6h18" stroke-width="1.9"/>
-      </svg>
+      </svg><small>空の色</small>
     </button>
     <button class="iconbtn" id="undoBtn" aria-label="元に戻す" title="元に戻す">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 9h9.5a5.5 5.5 0 1 1 0 11H8"/>
         <path d="M7.6 5.2L3.8 9l3.8 3.8"/>
-      </svg>
+      </svg><small>戻す</small>
     </button>
+    <div class="tools2" id="tools2"></div>
     <div class="sizewrap">
       <span>小</span>
       <input type="range" id="size" min="35" max="200" value="100" aria-label="雲の大きさ">
@@ -355,7 +369,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v16';   /* sw.js の CACHE と揃える */
+var VER='v17';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -1018,7 +1032,8 @@ var GROUPS=[
 var SPRITE=['cirrus','scale','haze','hikou','cumulus','nyudo','une','ray','sun','erase'];
 var toolsEl=document.getElementById('tools'),allTools=[];
 GROUPS.forEach(function(grp,gi){
-  if(gi){var sep=document.createElement('span');sep.className='tsep';sep.setAttribute('aria-hidden','true');toolsEl.appendChild(sep);}
+  var box=grp[0]==='他の道具'?document.getElementById('tools2'):toolsEl;
+  if(gi&&box===toolsEl){var sep=document.createElement('span');sep.className='tsep';sep.setAttribute('aria-hidden','true');toolsEl.appendChild(sep);}
   grp[1].forEach(function(t){
     var b=document.createElement('button');
     b.className='tool';b.type='button';b.dataset.t=t[0];
@@ -1032,7 +1047,7 @@ GROUPS.forEach(function(grp,gi){
       S.tool=t[0];wake();hideHint();
       allTools.forEach(function(c){c.setAttribute('aria-pressed',String(c.dataset.t===S.tool));});
     });
-    allTools.push(b);toolsEl.appendChild(b);
+    allTools.push(b);box.appendChild(b);
   });
 });
 document.getElementById('size').addEventListener('input',function(e){S.size=e.target.value/100;wake();});
@@ -1186,13 +1201,15 @@ function drawGround(){
     g.fillStyle=night?'rgba(255,226,160,.95)':rgba(near,1);g.fillRect(lx-2.5,ly-gh*0.2-8,5,5);
   }
 }
+var peekT=null;
+function peekSheet(){var sh=document.getElementById('sheet');sh.classList.add('peek');clearTimeout(peekT);peekT=setTimeout(function(){sh.classList.remove('peek');},1400);}
 var gEl=document.getElementById('grounds'),gBtns=[];
 GROUNDS.forEach(function(gd){
   var b=document.createElement('button');b.type='button';b.className='gchip';b.dataset.g=gd[0];b.textContent=gd[1];
   b.setAttribute('aria-pressed',String(gd[0]===S.ground));
   b.addEventListener('click',function(){
     S.ground=gd[0];gBtns.forEach(function(c){c.setAttribute('aria-pressed',String(c.dataset.g===S.ground));});
-    buildSky();wake();
+    buildSky();wake();peekSheet();
   });
   gBtns.push(b);gEl.appendChild(b);
 });
@@ -1248,7 +1265,7 @@ Object.keys(THEMES).forEach(function(k){
   b.addEventListener('click',function(){
     S.theme=k;SKYKEYS.forEach(function(p){S[p]=t[p];});
     Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed',String(c.dataset.k===k));});
-    syncInputs();updateCelestial();rebuildSoon();wake();
+    syncInputs();updateCelestial();rebuildSoon();wake();peekSheet();
   });
   presetsEl.appendChild(b);
 });
