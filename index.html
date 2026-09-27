@@ -325,7 +325,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v9';   /* sw.js の CACHE と揃える */
+var VER='v10';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -333,16 +333,21 @@ var cloud=mk(), rays=mk(), den=mk(), glow=mk(), skyC=mk(), starC=mk(), grainC=mk
 var blurOK=(typeof ctx.filter==='string');
 
 /* ================= palettes ================= */
+/* 雲の上 (kumoue) はタイトルの空から測った色。真上の濃紺 → 中ほどの青 → 地平線手前の淡い色
+   → 地平線の金の帯 (hzY) → その下は雲海。skyMid / hz を持つ空は、この段つきの塗り方をする */
 var THEMES={
+  kumoue  :{name:'雲の上',top:'#08254F',skyMid:'#3E6CA3',bot:'#C8B198',hz:'#DDA062',hzY:0.89,sea:'#B98252',
+            sun:'#FFF3D6',dark:'#8A7C84',mid:'#D8C6B8',light:'#FFF4E6',rim:'#FFE3B6'},
   hiruma  :{name:'昼',  top:'#1E63B4',bot:'#CFE8F6',sun:'#FFFAE8',dark:'#7E90A6',mid:'#C3D0DE',light:'#F2F7FC',rim:'#FFFFFF'},
   yuyake  :{name:'夕焼け',top:'#6E86A6',bot:'#F7C78C',sun:'#FFD48F',dark:'#575B6E',mid:'#8D8593',light:'#EBC9A0',rim:'#FFE6B4'},
   asayake :{name:'朝焼け',top:'#33538B',bot:'#FBC2A8',sun:'#FFE3C2',dark:'#5B5D78',mid:'#9E93A6',light:'#F6CDBA',rim:'#FFF3E4'},
   tasogare:{name:'黄昏',top:'#131E45',bot:'#E3875F',sun:'#FFBB79',dark:'#242B4E',mid:'#565A80',light:'#BE8B90',rim:'#FFD49E'},
   yoru    :{name:'夜',    top:'#03060F',bot:'#0E1A38',sun:'#E7EEFF',dark:'#0F1832',mid:'#28325A',light:'#68779F',rim:'#D8E2FF'}
 };
-var S={theme:'yuyake',top:'',bot:'',sun:'',dark:'',mid:'',light:'',rim:'',
-       sunX:0.5,sunY:0.30,sunR:0.9,wind:0.05,tool:'cumulus',size:1};
-(function(t){for(var k in t)if(k!=='name')S[k]=t[k];})(THEMES.yuyake);
+var SKYKEYS=['top','skyMid','bot','hz','hzY','sea','sun','dark','mid','light','rim'];
+var S={theme:'kumoue',top:'',bot:'',sun:'',dark:'',mid:'',light:'',rim:'',
+       sunX:0.80,sunY:0.15,sunR:0.9,wind:0.05,tool:'cumulus',size:1};
+(function(t){SKYKEYS.forEach(function(k){S[k]=t[k];});})(THEMES.kumoue);
 var strokes=[];
 
 /* ================= utils ================= */
@@ -651,12 +656,25 @@ function stampRay(s){
 function buildSky(){
   var g=skyC.x;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
   var gr=g.createLinearGradient(0,0,0,H);
-  gr.addColorStop(0,S.top);gr.addColorStop(0.62,mix(S.top,S.bot,0.72));gr.addColorStop(1,S.bot);
+  if(S.skyMid){
+    var y=S.hzY;
+    gr.addColorStop(0,S.top);gr.addColorStop(0.42,S.skyMid);
+    gr.addColorStop(y-0.10,S.bot);gr.addColorStop(y,S.hz);gr.addColorStop(1,S.sea);
+  }else{
+    gr.addColorStop(0,S.top);gr.addColorStop(0.62,mix(S.top,S.bot,0.72));gr.addColorStop(1,S.bot);
+  }
   g.fillStyle=gr;g.fillRect(0,0,W,H);
   var hz=g.createLinearGradient(0,H*0.55,0,H);
-  hz.addColorStop(0,rgba(S.bot,0));hz.addColorStop(1,rgba(S.bot,0.55));
+  hz.addColorStop(0,rgba(S.bot,0));hz.addColorStop(1,rgba(S.skyMid?S.sea:S.bot,S.skyMid?0.25:0.55));
   g.fillStyle=hz;g.fillRect(0,H*0.55,W,H*0.45);
-  document.documentElement.style.backgroundColor=S.bot;
+  if(S.skyMid){   /* 地平線の金の帯を、横に細くにじませる */
+    var y2=S.hzY*H,bh=H*0.035,bg=g.createLinearGradient(0,y2-bh,0,y2+bh);
+    bg.addColorStop(0,rgba(S.hz,0));bg.addColorStop(0.5,rgba(mix(S.hz,'#ffffff',0.15),0.30));bg.addColorStop(1,rgba(S.hz,0));
+    g.fillStyle=bg;g.fillRect(0,y2-bh,W,bh*2);
+  }
+  if(!isNight())paintSunGlow(g);
+  document.documentElement.style.backgroundColor=S.skyMid?S.sea:S.bot;
+  sunSprite=null;
 }
 function buildStars(){
   var g=starC.x;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
@@ -680,7 +698,7 @@ function composite(now){
   ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
   ctx.drawImage(skyC.c,0,0,W,H);
 
-  starA=clamp((0.30-lum(S.top))*3.4,0,1);
+  starA=clamp((0.30-skyLum())*3.4,0,1);
   if(starA>0.01){ctx.globalAlpha=starA*(0.75+0.25*Math.sin(now/2600));ctx.drawImage(starC.c,0,0,W,H);ctx.globalAlpha=1;}
 
   if(isNight())drawMoon(now); else drawSun(now);
@@ -698,26 +716,70 @@ function composite(now){
   ctx.globalCompositeOperation='source-over';
 
   var vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.35,W/2,H/2,Math.max(W,H)*0.78);
-  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,0.22)');
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,0.12)');
   ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
-  ctx.globalAlpha=0.5;
+  ctx.globalAlpha=0.28;
   if(!grainPat)grainPat=ctx.createPattern(grainC.c,'repeat');
   if(grainPat){ctx.fillStyle=grainPat;ctx.fillRect(0,0,W,H);}
   ctx.globalAlpha=1;
 }
-function isNight(){return lum(S.top)<0.17;}
+/* 空の明るさは、段つきの空なら中ほどの青で見る (真上の濃紺だけで見ると、昼なのに夜になる) */
+function skyLum(){return lum(S.skyMid||S.top);}
+function isNight(){return skyLum()<0.17;}
+/* 太陽はタイトルの絵のように、くっきりした芯と、放射状に伸びる光の筋。
+   筋は毎コマ描かず、1枚の絵 (sunSprite) にしておいて貼る */
+var sunSprite=null,sunSpriteKey='';
+function buildSunSprite(){
+  var m=Math.min(W,H),Rr=Math.round(m*(0.30+0.35*S.sunR)),sz=Rr*2,c=document.createElement('canvas');
+  c.width=c.height=Math.round(sz*dpr);var g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);
+  g.translate(Rr,Rr);g.globalCompositeOperation='lighter';
+  var r=rng(1234),warm=mix(S.sun,'#FF9A3C',0.6);
+  /* オレンジの光の輪 (青い空に足すと、白ではなく金色に見えるよう濃いめの橙) */
+  var wg=g.createRadialGradient(0,0,0,0,0,Rr*0.6);
+  wg.addColorStop(0,rgba(warm,0.85));wg.addColorStop(0.14,rgba(warm,0.42));wg.addColorStop(0.45,rgba(warm,0.10));wg.addColorStop(1,rgba(warm,0));
+  g.fillStyle=wg;g.beginPath();g.arc(0,0,Rr*0.6,0,6.2832);g.fill();
+  /* 細く薄い筋。長さを不ぞろいにする */
+  for(var i=0;i<16;i++){
+    var a=i/16*6.2832+(r()-0.5)*0.25,len=Rr*(0.14+r()*0.34),wd=m*0.005*(0.7+r()*0.6);
+    g.save();g.rotate(a);
+    var lg=g.createLinearGradient(0,0,len,0);
+    lg.addColorStop(0,rgba(S.sun,0.30));lg.addColorStop(0.25,rgba(warm,0.10));lg.addColorStop(1,rgba(warm,0));
+    g.fillStyle=lg;g.beginPath();g.moveTo(0,-wd);g.lineTo(len,0);g.lineTo(0,wd);g.closePath();g.fill();
+    g.restore();
+  }
+  /* 小さく強い芯 */
+  var core=m*0.016*(0.5+S.sunR);
+  var hg=g.createRadialGradient(0,0,0,0,0,core*3);
+  hg.addColorStop(0,rgba(S.sun,0.95));hg.addColorStop(0.35,rgba(warm,0.45));hg.addColorStop(1,rgba(warm,0));
+  g.fillStyle=hg;g.beginPath();g.arc(0,0,core*3,0,6.2832);g.fill();
+  var cg=g.createRadialGradient(0,0,0,0,0,core);
+  cg.addColorStop(0,'rgba(255,255,255,1)');cg.addColorStop(0.75,'rgba(255,253,245,.95)');cg.addColorStop(1,rgba(S.sun,0));
+  g.fillStyle=cg;g.beginPath();g.arc(0,0,core,0,6.2832);g.fill();
+  sunSprite={c:c,R:Rr};
+}
+/* 空いっぱいの照りと、太陽のまわりを橙へ寄せる塗りは、太陽が動かない限り変わらない。
+   毎コマ塗ると CPU4倍遅で 1コマ +25ms だったので、空の下地 (skyC) に焼き付ける */
+function paintSunGlow(g){
+  var sp=sunPos(),m=Math.min(W,H),warm=mix(S.sun,'#FF9A3C',0.5);
+  var glow=m*(0.22+0.55*S.sunR);
+  g.globalCompositeOperation='lighter';
+  var gg=g.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,glow);
+  gg.addColorStop(0,rgba(warm,.35));gg.addColorStop(.15,rgba(warm,.16));
+  gg.addColorStop(.5,rgba(warm,.05));gg.addColorStop(1,rgba(warm,0));
+  g.fillStyle=gg;g.fillRect(0,0,W,H);
+  /* 足し算の光は青い空の上では白っぽくなるので、太陽のまわりは空の色そのものを橙へ寄せる */
+  g.globalCompositeOperation='source-over';
+  var tr=m*(0.30+0.35*S.sunR)*0.75,tg=g.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,tr);
+  tg.addColorStop(0,rgba(warm,.55));tg.addColorStop(.3,rgba(warm,.22));tg.addColorStop(1,rgba(warm,0));
+  g.fillStyle=tg;g.beginPath();g.arc(sp.x,sp.y,tr,0,6.2832);g.fill();
+}
 function drawSun(now){
-  var sp=sunPos(),m=Math.min(W,H),puls=1+0.022*Math.sin(now/3400);
-  var glow=m*(0.16+0.5*S.sunR)*puls;
+  var sp=sunPos(),puls=1+0.02*Math.sin(now/3400);
+  var key=S.sun+S.sunR+W+H+dpr;
+  if(!sunSprite||sunSpriteKey!==key){buildSunSprite();sunSpriteKey=key;}
+  var R=sunSprite.R*puls;
   ctx.globalCompositeOperation='lighter';
-  var gg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,glow);
-  gg.addColorStop(0,rgba(S.sun,.92));gg.addColorStop(.09,rgba(S.sun,.5));
-  gg.addColorStop(.4,rgba(S.sun,.14));gg.addColorStop(1,rgba(S.sun,0));
-  ctx.fillStyle=gg;ctx.fillRect(0,0,W,H);
-  var core=m*0.017*(0.5+S.sunR)*puls;
-  var cg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,core);
-  cg.addColorStop(0,'rgba(255,255,255,.98)');cg.addColorStop(.55,rgba(S.sun,.88));cg.addColorStop(1,rgba(S.sun,0));
-  ctx.fillStyle=cg;ctx.beginPath();ctx.arc(sp.x,sp.y,core,0,6.2832);ctx.fill();
+  ctx.drawImage(sunSprite.c,sp.x-R,sp.y-R,R*2,R*2);
   ctx.globalCompositeOperation='source-over';
 }
 var MARIA=[[-.34,-.20,.36,.30],[.16,-.36,.24,.20],[.28,.18,.32,.26],[-.16,.34,.22,.17],[.00,-.02,.18,.15],[-.40,.10,.16,.20]];
@@ -960,7 +1022,7 @@ Object.keys(THEMES).forEach(function(k){
   b.setAttribute('aria-pressed',String(k===S.theme));
   b.innerHTML='<i style="background:linear-gradient(165deg,'+t.top+' 8%,'+t.bot+')"></i><small>'+t.name+'</small>';
   b.addEventListener('click',function(){
-    S.theme=k;['top','bot','sun','dark','mid','light','rim'].forEach(function(p){S[p]=t[p];});
+    S.theme=k;SKYKEYS.forEach(function(p){S[p]=t[p];});
     Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed',String(c.dataset.k===k));});
     syncInputs();updateCelestial();rebuildSoon();wake();
   });
@@ -972,7 +1034,7 @@ cSun.addEventListener('input',function(e){S.sun=e.target.value;S.rim=mix(e.targe
 cCloud.addEventListener('input',function(e){
   S.mid=e.target.value;S.dark=mix(e.target.value,'#131a2c',0.45);S.light=mix(e.target.value,'#ffffff',0.6);rebuildSoon();
 });
-document.getElementById('sunSize').addEventListener('input',function(e){S.sunR=e.target.value/100;wake();});
+document.getElementById('sunSize').addEventListener('input',function(e){S.sunR=e.target.value/100;buildSky();wake();});
 document.getElementById('windR').addEventListener('input',function(e){S.wind=e.target.value/100;wake();});
 syncInputs();updateCelestial();
 

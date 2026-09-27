@@ -56,6 +56,31 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
   check('タイトルの絵を、オフライン用に先読みする', /'\.\/title-bg\.jpg'/.test(sw) && /'\.\/title-logo\.png'/.test(sw));
 
+  // --- プレイ画面の空は、タイトルの空と同じ世界 (雲の上) ---
+  const sky = await p.evaluate(async () => {
+    const bg = document.querySelector('#title .bg'); await bg.decode();
+    const c = document.createElement('canvas'); c.width = 430; c.height = 932; const g = c.getContext('2d');
+    g.drawImage(bg, 0, 0, 430, 932);
+    const cv = document.getElementById('cv'), cg = cv.getContext('2d'), k = cv.width / 430;
+    // 雲や太陽が無い左端の帯で、高さごとの色を比べる
+    const band = (ctx, y, sc) => { const d = ctx.getImageData(Math.round(10 * sc), Math.round(y * 932 * sc), Math.round(30 * sc), Math.round(6 * sc)).data;
+      let r = 0, gg = 0, bb = 0, n = d.length / 4; for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; bb += d[i + 2]; } return [r / n, gg / n, bb / n]; };
+    const dist = (a, b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
+    const ys = [0.08, 0.2, 0.89];
+    const d = ys.map(y => dist(band(g, y, 1), band(cg, y, k)));
+    // 1コマで、画面いっぱいの層に丸いグラデーションを何回作るか (太陽の照りを毎コマ塗っていないか)
+    const C = CanvasRenderingContext2D.prototype, rg = C.createRadialGradient; let n = 0;
+    C.createRadialGradient = function () { if (this === cg) n++; return rg.apply(this, arguments); };
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    n = 0; await new Promise(r => requestAnimationFrame(r)); const per = n;
+    C.createRadialGradient = rg;
+    return { theme: window.__app.S.theme, d, per, sunLabel: document.querySelector('[data-t=sun] small').textContent };
+  });
+  check('はじめの空は「雲の上」', sky.theme === 'kumoue', sky.theme);
+  check('プレイ画面の空の色が、タイトルの空に近い (上・中・地平線)', sky.d.every(v => v < 60), JSON.stringify(sky.d));
+  check('雲の上の空で、太陽が月にならない', sky.sunLabel === '太陽', sky.sunLabel);
+  check('太陽の照りを毎コマ塗らない (空の下地に焼き付け)', sky.per <= 1, 'radialGradient/コマ=' + sky.per);
+
   // 1. 全画面のものが fixed で置かれていない (fixed だと iOS の短い枠に合わせて下が空く)
   const fixed = await p.evaluate(() => [...document.querySelectorAll('body *')]
     .filter(e => getComputedStyle(e).position === 'fixed').map(e => e.id || e.className));
