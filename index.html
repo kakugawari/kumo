@@ -369,7 +369,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v17';   /* sw.js の CACHE と揃える */
+var VER='v18';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -549,130 +549,223 @@ function bbox(p,pad){
 /* =========================================================
    cloud = density field + light marched toward the sun
    ========================================================= */
-/* 雲1つぶんを「形(濃さ)」と「塗り」に分けて、それぞれ取っておく。
-   太陽や色が変わっても形は変わらないので、塗り直すだけで済む。
-   描き直しは取っておいた塗りを貼るだけになり、雲の数が増えても軽い */
-function shapeCloud(s){
-  var R=s.R,t=s.t;
-  var p = t==='cumulus'?genCumulus(s.x,s.y,R,s.seed)
-        : t==='nyudo'  ?genNyudo(s.x,s.y,R,s.seed)
-        : t==='une'    ?genUne(s.x,s.y,R,s.seed)
-        : t==='scale'  ?genScale(s.x,s.y,R,s.seed)
-        : t==='haze'   ?genHaze(s.x,s.y,R,s.seed)
-        : t==='hikou'  ?genHikou(s.x,s.y,R,s.seed,s.a||0)
-        :               genCirrus(s.x,s.y,R,s.seed,s.a||0);
-  s.pc=null;
-  if(!p.length)return;
-  var bb=bbox(p,R*0.5);
-  if(bb.w<3||bb.h<3)return;
-
-  /* 雲の絵の細かさ (画面の点 1 つあたりの画素)。0.62 だと筋雲のふちが階段状にガタついた。
-     細い雲ほど細かく作る。大きすぎる雲は 520 画素に収める */
-  var q=Math.min(QD[t]||0.8, 520/Math.max(bb.w,bb.h));
-  var w=Math.max(3,Math.ceil(bb.w*q)), h=Math.max(3,Math.ceil(bb.h*q));
-  den.c.width=w; den.c.height=h;
-  var g=den.x;
-  /* --- 1. accumulate density (additive white on black) --- */
-  var cp=CP[t]||CP.cumulus, peak=cp.peak;
-  g.setTransform(1,0,0,1,0,0);
-  g.globalCompositeOperation='source-over';
-  g.fillStyle='#000';g.fillRect(0,0,w,h);
-  g.setTransform(q,0,0,q,-bb.x*q,-bb.y*q);
-  g.globalCompositeOperation='lighter';
-  for(var i=0;i<p.length;i++){
-    var qq=p[i],rr=qq.rr; if(rr*q<0.6)continue;
-    g.save();g.translate(qq.x,qq.y);if(qq.rot)g.rotate(qq.rot);g.scale(qq.sx,1);
-    var gr=g.createRadialGradient(0,0,0,0,0,rr);
-    var pk=peak*(qq.pk||1);
-    gr.addColorStop(0,'rgba(255,255,255,'+pk+')');
-    gr.addColorStop(0.45,'rgba(255,255,255,'+(pk*0.62)+')');
-    gr.addColorStop(1,'rgba(255,255,255,0)');
-    g.fillStyle=gr;g.beginPath();g.arc(0,0,rr,0,6.2832);g.fill();g.restore();
-  }
-  g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';
-
-  var d=g.getImageData(0,0,w,h).data, n=w*h;
-  var D=new Float32Array(n);
-
-  /* --- 2. break up the field with two octaves of fbm --- */
-  var f1=NS/(R*1.45), f2=NS/(R*0.46);
-  var o1x=s.seed%233, o1y=(s.seed>>3)%197, o2x=(s.seed>>5)%151, o2y=(s.seed>>7)%179;
-  var wob = cp.wob;
-  for(var y=0;y<h;y++){
-    var wy=bb.y+y/q;
-    for(var x=0;x<w;x++){
-      var idx=y*w+x, v=d[idx<<2]/255;
-      if(v<0.012){D[idx]=0;continue;}
-      var wx=bb.x+x/q;
-      var nz=nAt(wx*f1+o1x,wy*f1+o1y)*0.68+nAt(wx*f2+o2x,wy*f2+o2y)*0.32;
-      D[idx]=v*(1+(nz-0.5)*1.5*wob);
-    }
-  }
-
-  s.pc={bb:bb,q:q,w:w,h:h,D:D,lit:null,img:null,key:''};
+/* ================= 雲の場 (ひとなぞり = 1つの雲) =================
+   前は、なぞった線の上に「できあがった小さな雲」を一定の間隔で押していた。
+   くり返しの模様が見え、重なりにもそれぞれのふちが残り、指の速さで間が空いた (ハンコのよう)。
+   いまは、ひとなぞりごとに 1 枚の「濃さの場」(A) を持ち、指の通り道に沿って濃さを足していく。
+   光もその場全体で当てるので、重なった所は 1 つの雲として溶け合う。
+   - A: 足した濃さ (生)。D: 揺らぎを掛けたあとの濃さ。lit: 塗った色。cv: 描いている最中に貼る絵
+   - 場は必要になったら広げる (はみ出す所を足す)。細かさ q はなぞり始めに決め、変えない
+   - 描いている最中は、足した所と、そこが落とす影の届く所だけを塗り直す */
+function fieldNew(s,x0,y0,x1,y1){
+  var q=QD[s.t]||0.8,m=s.R*1.2;
+  var ox=Math.floor((x0-m)*q)/q,oy=Math.floor((y0-m)*q)/q;
+  var w=Math.ceil((x1+m-ox)*q),h=Math.ceil((y1+m-oy)*q);
+  s.pc={q:q,ox:ox,oy:oy,w:w,h:h,A:new Float32Array(w*h),D:new Float32Array(w*h),lit:new ImageData(w,h),
+        cv:null,key:'',img:null,bmp:null};
+  fieldBox(s.pc);
 }
-function lightKey(){return S.sunX+','+S.sunY+','+W+','+H+S.dark+S.light+S.rim+S.bot;}
-function lightCloud(s){
-  var pc=s.pc,w=pc.w,h=pc.h,D=pc.D,t=s.t;
-  var img=pc.lit||(pc.lit=new ImageData(w,h)),d=img.data;
-  var cp=CP[t]||CP.cumulus;
-  /* --- 3. march toward the sun, shade, write out --- */
-  var sp=sunPos(),ldx=sp.x-s.x,ldy=sp.y-s.y,L=Math.hypot(ldx,ldy)||1;
+function fieldBox(pc){pc.bb={x:pc.ox,y:pc.oy,w:pc.w/pc.q,h:pc.h/pc.q};pc.box=pc.bb;}
+/* 場を (x0,y0)-(x1,y1) まで広げる。広げるときは R だけ余分に取って、何度も広げずに済ませる */
+function fieldGrow(s,x0,y0,x1,y1){
+  var pc=s.pc;
+  if(!pc){fieldNew(s,x0,y0,x1,y1);return true;}
+  var q=pc.q;
+  if(x0>=pc.ox&&y0>=pc.oy&&x1<=pc.ox+pc.w/q&&y1<=pc.oy+pc.h/q)return false;
+  var m=s.R*1.5,nx0=Math.min(pc.ox,x0-m),ny0=Math.min(pc.oy,y0-m),nx1=Math.max(pc.ox+pc.w/q,x1+m),ny1=Math.max(pc.oy+pc.h/q,y1+m);
+  var dx=Math.ceil((pc.ox-nx0)*q),dy=Math.ceil((pc.oy-ny0)*q);   /* 升目をそろえたまま広げる */
+  var nox=pc.ox-dx/q,noy=pc.oy-dy/q,nw=Math.ceil((nx1-nox)*q),nh=Math.ceil((ny1-noy)*q);
+  var A=new Float32Array(nw*nh),D=new Float32Array(nw*nh),L=new ImageData(nw,nh);
+  for(var y=0;y<pc.h;y++){
+    A.set(pc.A.subarray(y*pc.w,(y+1)*pc.w),(y+dy)*nw+dx);
+    D.set(pc.D.subarray(y*pc.w,(y+1)*pc.w),(y+dy)*nw+dx);
+    L.data.set(pc.lit.data.subarray(y*pc.w*4,(y+1)*pc.w*4),((y+dy)*nw+dx)*4);
+  }
+  pc.ox=nox;pc.oy=noy;pc.w=nw;pc.h=nh;pc.A=A;pc.D=D;pc.lit=L;pc.cv=null;fieldBox(pc);
+  return true;
+}
+/* 粒 1 つぶんの濃さを場に足す。形は前の放射グラデーションと同じ (0→0.45 で 1→0.62、1 で 0)。
+   足した範囲 (升目) を返す */
+function fieldAdd(s,pf,dirty){
+  var pc=s.pc,q=pc.q,cp=CP[s.t]||CP.cumulus,peak=cp.peak*(pf.pk||1);
+  var rr=pf.rr*q; if(rr<0.6)return;
+  var sx=pf.sx||1,ext=rr*Math.max(sx,1),cx=(pf.x-pc.ox)*q,cy=(pf.y-pc.oy)*q;
+  var x0=Math.max(0,Math.floor(cx-ext)),x1=Math.min(pc.w-1,Math.ceil(cx+ext)),
+      y0=Math.max(0,Math.floor(cy-(pf.rot?ext:rr))),y1=Math.min(pc.h-1,Math.ceil(cy+(pf.rot?ext:rr)));
+  var ca=Math.cos(-(pf.rot||0)),sa=Math.sin(-(pf.rot||0)),A=pc.A,w=pc.w,ir=1/rr,isx=1/sx;
+  for(var y=y0;y<=y1;y++){var vy=y+0.5-cy;
+    for(var x=x0;x<=x1;x++){var vx=x+0.5-cx,u=(vx*ca-vy*sa)*isx,v=vx*sa+vy*ca,d=Math.sqrt(u*u+v*v)*ir;
+      if(d>=1)continue;
+      A[y*w+x]+=peak*(d<0.45?1-0.844*d:0.62*(1-(d-0.45)/0.55));}}
+  if(dirty){if(x0<dirty[0])dirty[0]=x0;if(y0<dirty[1])dirty[1]=y0;if(x1>dirty[2])dirty[2]=x1;if(y1>dirty[3])dirty[3]=y1;}
+}
+/* 生の濃さ A に、場所で決まる揺らぎを掛けて D にする。揺らぎは、なぞり全体で 1 つの模様 (継ぎ目が出ない)。
+   何度もなぞって濃くなった所は、1 を越えないようにやわらかく頭打ちにする */
+function fieldNoise(s,x0,y0,x1,y1){
+  var pc=s.pc,q=pc.q,R=s.R,cp=CP[s.t]||CP.cumulus,wob=cp.wob,A=pc.A,D=pc.D,w=pc.w;
+  var f1=NS/(R*1.45),f2=NS/(R*0.46),o1x=s.seed%233,o1y=(s.seed>>3)%197,o2x=(s.seed>>5)%151,o2y=(s.seed>>7)%179;
+  for(var y=y0;y<=y1;y++){var wy=pc.oy+(y+0.5)/q;
+    for(var x=x0;x<=x1;x++){var i=y*w+x,v=A[i];
+      if(v<0.012){D[i]=0;continue;}
+      if(v>0.8)v=0.8+0.2*Math.tanh((v-0.8)/0.2);
+      var wx=pc.ox+(x+0.5)/q,nz=nAt(wx*f1+o1x,wy*f1+o1y)*0.68+nAt(wx*f2+o2x,wy*f2+o2y)*0.32;
+      D[i]=v*(1+(nz-0.5)*1.5*wob);}}
+}
+function lightKey(){return S.sunX+','+S.sunY+','+W+','+H+S.dark+S.light+S.rim+S.bot+S.skyMid;}
+/* 升目の範囲を塗る。太陽へ向かって濃さを足し合わせ (前と同じ)、積み上がる雲は
+   「上にどれだけ雲が重なっているか」で底を暗くする (場の高さに頼らないので、どんな形でも自然になる) */
+function fieldLight(s,x0,y0,x1,y1){
+  var pc=s.pc,w=pc.w,h=pc.h,D=pc.D,q=pc.q,d=pc.lit.data,t=s.t,cp=CP[t]||CP.cumulus;
+  var sp=sunPos(),cx=pc.ox+pc.w/q/2+drift,cy=pc.oy+pc.h/q/2,ldx=sp.x-cx,ldy=sp.y-cy,L=Math.hypot(ldx,ldy)||1;
   ldx/=L;ldy/=L;
-  var step=2.4*pc.q/0.62, steps=cp.steps, absorb=cp.absorb;   /* 光を追う1歩は、細かさによらず同じ長さに */
-  var t0=cp.t0, t1=t0+cp.tw, typeA=cp.a;
-
-  /* 影には空の青が映る。積み上がる雲 (綿雲・入道雲・畝雲) は、底ほど暗く平たく見せる */
+  var step=2.4*q/0.62,steps=cp.steps,absorb=cp.absorb,t0=cp.t0,t1=t0+cp.tw,typeA=cp.a;
   var cd=hx(mix(S.dark,S.skyMid||S.top,0.3)),cl=hx(S.light),cr=hx(S.rim),cb=hx(S.bot);
-  var heap=(t==='cumulus'||t==='nyudo'||t==='une');
-  for(var y2=0;y2<h;y2++){
-    for(var x2=0;x2<w;x2++){
-      var i2=y2*w+x2, dv=D[i2], o=i2<<2;
+  var heap=(t==='cumulus'||t==='nyudo'||t==='une'),ustep=step*1.4;
+  for(var y2=y0;y2<=y1;y2++){
+    for(var x2=x0;x2<=x1;x2++){
+      var i2=y2*w+x2,dv=D[i2],o=i2<<2;
       if(dv<=t0*0.35){d[o+3]=0;continue;}
       var sum=0,sx2=x2,sy2=y2;
-      for(var k=1;k<=steps;k++){
-        sx2+=ldx*step;sy2+=ldy*step;
-        var ix=sx2|0, iy=sy2|0;
-        if(ix<0||iy<0||ix>=w||iy>=h)break;
-        var sv=D[iy*w+ix]; if(sv>0)sum+=sv;
-      }
-      var T=Math.exp(-sum*absorb);
-      T=0.09+0.91*T;
+      for(var k=1;k<=steps;k++){sx2+=ldx*step;sy2+=ldy*step;var ix=sx2|0,iy=sy2|0;
+        if(ix<0||iy<0||ix>=w||iy>=h)break;var sv=D[iy*w+ix];if(sv>0)sum+=sv;}
+      var T=Math.exp(-sum*absorb);T=0.09+0.91*T;
       var lm=Math.pow(T,0.85);
-      if(heap){lm=0.32+0.68*lm;var bd=clamp((y2/h-0.42)*1.3,0,0.6);lm*=1-bd*0.45;}   /* 陰にも空の明るさが回る */
-      var thin=1-clamp(dv*1.25,0,1);
-      var rim=Math.pow(T,2.2)*thin*0.8;
-      var r=cd[0]+(cl[0]-cd[0])*lm, gg2=cd[1]+(cl[1]-cd[1])*lm, b=cd[2]+(cl[2]-cd[2])*lm;
-      r+=(cr[0]-r)*rim; gg2+=(cr[1]-gg2)*rim; b+=(cr[2]-b)*rim;
-      r+=(cb[0]-r)*0.09; gg2+=(cb[1]-gg2)*0.09; b+=(cb[2]-b)*0.09;
+      if(heap){
+        var up=0;for(var k2=1;k2<=6;k2++){var yy=(y2-k2*ustep)|0;if(yy<0)break;up+=D[yy*w+x2];}
+        lm=0.32+0.68*lm;lm*=1-0.42*(1-Math.exp(-up*0.55));   /* 上に雲が重なるほど暗い = 底が暗い */
+      }
+      var thin=1-clamp(dv*1.25,0,1),rim=Math.pow(T,2.2)*thin*0.8;
+      var r=cd[0]+(cl[0]-cd[0])*lm,gg2=cd[1]+(cl[1]-cd[1])*lm,b=cd[2]+(cl[2]-cd[2])*lm;
+      r+=(cr[0]-r)*rim;gg2+=(cr[1]-gg2)*rim;b+=(cr[2]-b)*rim;
+      r+=(cb[0]-r)*0.09;gg2+=(cb[1]-gg2)*0.09;b+=(cb[2]-b)*0.09;
       var a=clamp((dv-t0)/(t1-t0),0,1)*typeA;
       d[o]=r;d[o+1]=gg2;d[o+2]=b;d[o+3]=a*255;
     }
   }
+  s.ldx=ldx;s.ldy=ldy;
+}
+/* 描いている最中の絵 (cv) に、塗り直した範囲だけ流し込む */
+function fieldBlit(s,x0,y0,x1,y1){
+  var pc=s.pc;
+  if(!pc.cv||pc.cv.width!==pc.w||pc.cv.height!==pc.h){pc.cv=document.createElement('canvas');pc.cv.width=pc.w;pc.cv.height=pc.h;x0=0;y0=0;x1=pc.w-1;y1=pc.h-1;}
+  pc.cv.getContext('2d').putImageData(pc.lit,0,0,x0,y0,x1-x0+1,y1-y0+1);
+}
+/* 足した範囲 (dirty) から、塗り直す範囲を出す。太陽と反対側へ、影の届く長さだけ広げる */
+function fieldUpdate(s,dirty){
+  var pc=s.pc;if(dirty[0]>dirty[2])return;
+  var cp=CP[s.t]||CP.cumulus,reach=Math.ceil(cp.steps*2.4*pc.q/0.62)+2,ldx=s.ldx||0,ldy=s.ldy||-1;
+  var nx0=Math.max(0,dirty[0]-2),ny0=Math.max(0,dirty[1]-2),nx1=Math.min(pc.w-1,dirty[2]+2),ny1=Math.min(pc.h-1,dirty[3]+2);
+  fieldNoise(s,nx0,ny0,nx1,ny1);
+  var lx0=nx0,ly0=ny0,lx1=nx1,ly1=ny1;
+  if(ldx>0)lx0=Math.max(0,nx0-reach);else lx1=Math.min(pc.w-1,nx1+reach);
+  if(ldy>0)ly0=Math.max(0,ny0-reach);else ly1=Math.min(pc.h-1,ny1+reach);
+  if(s.t==='cumulus'||s.t==='nyudo'||s.t==='une')ly1=Math.min(pc.h-1,ly1+Math.ceil(6*2.4*pc.q/0.62*1.4)+2);   /* 下の雲は「上の濃さ」も見る */
+  fieldLight(s,lx0,ly0,lx1,ly1);
+  fieldBlit(s,lx0,ly0,lx1,ly1);
   pc.key=lightKey();
-
-  /* 後光(ぼかした写し)も、ここで雲の小さな絵の上で1度だけ付けておく。
-     描き直しのたびに画面いっぱいの層の上でぼかしていたときは、
-     雲45個で1回の描き直しが 2658ms かかっていた(ぼかし無しなら 108ms) */
-  var sig=Math.max(2,s.R*0.05)*pc.q/dpr, pad=blurOK?Math.ceil(sig*3):0;
-  den.c.width=w;den.c.height=h;den.x.putImageData(img,0,0);
+}
+/* 場ぜんぶを塗り直し、後光 (ぼかした写し) を付けて、貼る絵 (img / bmp) にする */
+function lightCloud(s){
+  var pc=s.pc;fieldLight(s,0,0,pc.w-1,pc.h-1);pc.key=lightKey();
+  if(s.live){fieldBlit(s,0,0,pc.w-1,pc.h-1);return;}
+  fieldFinish(s);
+}
+function fieldFinish(s){
+  var pc=s.pc,w=pc.w,h=pc.h;
+  /* 後光も、雲の小さな絵の上で1度だけ付けておく (画面いっぱいの層でぼかすと、雲45個で 2658ms かかった) */
+  var sig=Math.max(2,s.R*0.05)*pc.q/dpr,pad=blurOK?Math.ceil(sig*3):0;
+  den.c.width=w;den.c.height=h;den.x.putImageData(pc.lit,0,0);
   var G=glow.x;glow.c.width=w+pad*2;glow.c.height=h+pad*2;
   if(blurOK){G.filter='blur('+sig+'px)';G.globalAlpha=0.42;G.drawImage(den.c,pad,pad);G.filter='none';G.globalAlpha=1;}
   G.drawImage(den.c,pad,pad);
   pc.img=G.getImageData(0,0,w+pad*2,h+pad*2);
-  /* 貼るたびに画素を流し込むのも重いので、絵(ImageBitmap)にしておく。できるまでは画素から貼る */
   pc.bmp=null;
-  if(window.createImageBitmap){
-    var k=pc.key,im=pc.img;
-    createImageBitmap(im).then(function(bm){
-      if(pc.key===k&&pc.img===im){if(pc.bmp&&pc.bmp.close)pc.bmp.close();pc.bmp=bm;}
-      else if(bm.close)bm.close();
-    }).catch(function(){});
-  }
+  if(window.createImageBitmap){var k=pc.key,im=pc.img;
+    createImageBitmap(im).then(function(bm){if(pc.key===k&&pc.img===im){if(pc.bmp&&pc.bmp.close)pc.bmp.close();pc.bmp=bm;}else if(bm.close)bm.close();}).catch(function(){});}
   var pu=pad/pc.q;
-  pc.box={x:pc.bb.x-pu,y:pc.bb.y-pu,w:pc.bb.w+pu*2,h:pc.bb.h+pu*2};
+  pc.box={x:pc.ox-pu,y:pc.oy-pu,w:pc.w/pc.q+pu*2,h:pc.h/pc.q+pu*2};
 }
-
+/* 粒の並び (s.p) から場を作り直す (場を持っていないとき用) */
+function shapeCloud(s){
+  var p=s.p;s.pc=null;if(!p||!p.length)return;
+  var bb=bbox(p,0);fieldNew(s,bb.x,bb.y,bb.x+bb.w,bb.y+bb.h);
+  for(var i=0;i<p.length;i++)fieldAdd(s,p[i],null);
+  fieldNoise(s,0,0,s.pc.w-1,s.pc.h-1);
+}
+/* 粒を足す (場を広げ、濃さを足し、記録にも残す) */
+function depositAll(s,list,dirty){
+  if(!list.length)return;
+  var bb=bbox(list,0);
+  var fresh=!s.pc;fieldGrow(s,bb.x,bb.y,bb.x+bb.w,bb.y+bb.h);   /* 広げたときも、塗った色は写してあるので、塗り直すのは足した所だけ */
+  if(fresh){dirty[0]=0;dirty[1]=0;dirty[2]=s.pc.w-1;dirty[3]=s.pc.h-1;}
+  for(var i=0;i<list.length;i++){fieldAdd(s,list[i],dirty);s.p.push(list[i]);}
+}
+/* ---- 筆 (指の通り道の 1 点ごとに、どんな粒を足すか) ---- */
+/* なぞりで足す濃さの係数。直す前の版と同じ芯の濃さ (なぞった線の上の濃さの真ん中の値) になるよう、
+   測って決めた (直す前 綿雲 0.45 / 畝雲 0.27 / 鱗雲 0.17 / 筋雲 0.14 / 霞雲 0.31) */
+var BRUSH_K={cumulus:1.1,nyudo:1.1,une:1.35,scale:0.72,cirrus:0.62,haze:2.6,hikou:1};
+var BRUSH_SP={cumulus:0.42,nyudo:0.46,une:0.26,scale:0.20,haze:0.38,cirrus:0.05,hikou:0.03};   /* 点の間隔 (×R) */
+/* なぞった長さ u に沿って、なめらかに変わる 0〜1 の値 (なぞりごとに違う)。筆のふくらみ具合に使う */
+function arcNoise(s,u,row){
+  var x=u,x0=Math.floor(x),f=x-x0,y=((s.seed>>3)+(row||0)*37)&255;
+  var a=noiseArr[(y<<8)+(x0&255)],b=noiseArr[(y<<8)+((x0+1)&255)];f=f*f*(3-2*f);return a+(b-a)*f;
+}
+function brushAt(s,x,y,ang,out){
+  var n0=out.length;brushPuffs(s,x,y,ang,out);
+  var k=BRUSH_K[s.t]||1;for(var i=n0;i<out.length;i++)out[i].pk=(out[i].pk||1)*k;
+}
+function brushPuffs(s,x,y,ang,out){
+  var R=s.R,r=s.r,t=s.t,arc=s.arc;
+  if(t==='cumulus'||t==='nyudo'){
+    /* 綿雲: こぶの房 (大きなこぶの上に小さなこぶが重なる) を、なぞった道に沿って足していく。
+       房の大きさ e はなぞった長さに沿って変わる (0.62〜1.52)。房どうしは半分ずつ重なり、
+       1 枚の場でまとめて光を当てるので、こぶの凹凸と陰影は残り、継ぎ目とくり返しは出ない。底は平たくそろえる */
+    var e=0.62+0.9*arcNoise(s,arc/(R*1.1),0),tall=t==='nyudo'?1.7:1,fl=y+R*0.26;
+    bloom(out,x+(r()-0.5)*R*0.2,y-R*0.16*e*tall,R*0.44*e,2,r,{n:3,min:R*0.05,cap:1e9,wide:1.2,tall:0.66*tall,floor:fl});
+    if(t==='nyudo'){var th=0.8+0.9*arcNoise(s,arc/(R*1.7),1);   /* 入道雲: 塔を上へ積む */
+      for(var k=1;k<=3;k++)bloom(out,x+(r()-0.5)*R*0.3*k,y-R*(0.45+0.42*k)*th,R*(0.3-0.04*k)*e,1,r,{n:3,min:R*0.05,cap:1e9,wide:1.0,tall:0.9});}
+  }else if(t==='une'){
+    /* 畝: 場所で決まる横縞 (行の間隔 0.42R) の上に、平たい粒を置く。行ごとに切れ目の入り方が違う */
+    var rowH=R*0.42,base=Math.round(y/rowH);
+    for(var j=-1;j<=1;j++){var ry=(base+j)*rowH;if(Math.abs(ry-y)>R*0.6)continue;
+      var fall=1-Math.abs(ry-y)/(R*0.65),gap=arcNoise(s,x/(R*0.7),base+j+5);   /* 場所で決まる途切れ */
+      if(gap<0.3)continue;
+      out.push({x:x+(r()-0.5)*R*0.2,y:ry+(r()-0.5)*R*0.05,rr:R*(0.24+r()*0.06)*(0.65+0.35*fall),sx:1.7,pk:(0.55*fall+0.15)*(0.5+gap*0.6)});}
+    out.push({x:x,y:y,rr:R*0.62,sx:1.5,pk:0.22});
+  }else if(t==='scale'){
+    /* 鱗: 場所で決まる六角の格子。まだ置いていない格子点だけに粒を置く (重ねても濃くならず、模様がそろう)。
+       なぞった線から離れた粒ほど薄く小さくして、ふちが点々にならないようにする */
+    var cell=R*0.16,rad=R*0.6;
+    for(var gy=Math.floor((y-rad)/(cell*0.78));gy<=Math.ceil((y+rad)/(cell*0.78));gy++){
+      for(var gx=Math.floor((x-rad)/cell)-1;gx<=Math.ceil((x+rad)/cell)+1;gx++){
+        var key=gx+','+gy;if(s.seen[key])continue;
+        var h2=((gx*73856093)^(gy*19349663)^s.seed)>>>0,j1=(h2%1000)/1000,j2=((h2>>10)%1000)/1000;
+        var px=gx*cell+(gy&1?cell*0.5:0)+(j1-0.5)*cell*0.35,py=gy*cell*0.78+(j2-0.5)*cell*0.3;
+        var dd=Math.hypot(px-x,py-y)/rad;if(dd>1)continue;
+        s.seen[key]=1;
+        var fo=1-dd*dd,rr2=cell*(0.6+j1*0.2)*(0.7+0.3*fo);
+        out.push({x:px,y:py,rr:rr2,sx:1.25,pk:0.65*fo+0.1},{x:px+(j2-0.5)*rr2*0.6,y:py-rr2*0.25,rr:rr2*0.62,sx:1.2,pk:0.5*fo});
+      }}
+    out.push({x:x,y:y,rr:R*0.78,sx:1.35,pk:0.18});
+  }else if(t==='haze'){
+    out.push({x:x+(r()-0.5)*R*0.4,y:y+(r()-0.5)*R*0.2,rr:R*(0.45+r()*0.35),sx:1.9,pk:0.55});
+  }else if(t==='cirrus'){
+    /* 筋: なぞり始めに決めた何本かの「筋の通り道」を、なぞった向きに沿って伸ばす。
+       通り道はなぞった長さに沿ってゆっくり横へ漂い、太さも筋ごと・場所ごとに変わる (定規で引いた線にしない)。
+       下にうすいもやを敷いて、筋どうしをつなげる */
+    var nx=-Math.sin(ang),ny=Math.cos(ang);
+    for(var li=0;li<s.lanes.length;li++){var ln=s.lanes[li],ph=(arc+ln.shift)/ln.len,f=ph-Math.floor(ph);
+      if(f>ln.on)continue;
+      var env=Math.pow(Math.sin(Math.PI*f/ln.on),0.8),
+          drift2=Math.sin(arc/(R*1.6)+ln.ph)*R*0.12+(arcNoise(s,arc/(R*0.8),li+2)-0.5)*R*0.12,
+          off=ln.off+drift2,tilt=Math.cos(arc/(R*1.6)+ln.ph)*0.12,wv=0.45+0.9*arcNoise(s,arc/(R*0.6),li+9);
+      out.push({x:x+nx*off,y:y+ny*off,rr:R*0.06*env*ln.w*wv,sx:3.6,rot:ang+tilt,pk:(0.5+0.35*r())*(0.35+0.9*arcNoise(s,arc/(R*0.18),li+20))});}   /* 筋に沿った細かい濃淡で、切れ切れにほどける */
+    if(r()<0.6)out.push({x:x+nx*(r()-0.5)*R*0.3,y:y+ny*(r()-0.5)*R*0.3,rr:R*0.3,sx:2.6,rot:ang,pk:0.2});
+  }else if(t==='hikou'){
+    out.push({x:x+(r()-0.5)*R*0.012,y:y+(r()-0.5)*R*0.012,rr:R*0.034,sx:1.8,rot:ang,pk:0.9});
+    if(r()<0.2)out.push({x:x+(r()-0.5)*R*0.06,y:y+(r()-0.5)*R*0.06,rr:R*0.05,sx:2.2,rot:ang,pk:0.45});
+  }
+}
 function layDown(tx,s,alpha){
   var pc=s.pc; if(!pc||!pc.img)return;
   var bb=pc.box,offs=[0],src=pc.bmp;
@@ -759,7 +852,7 @@ function buildGrain(){
 }
 
 /* ================= composite ================= */
-var drift=0,lastT=0,freshA=1,freshS=null,starA=0,grainPat=null;
+var drift=0,lastT=0,liveS=null,liveA=1,starA=0,grainPat=null;
 function composite(now){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
@@ -773,9 +866,12 @@ function composite(now){
   var dr=((drift%W)+W)%W;
   ctx.drawImage(cloud.c,dr,0,W,H);
   ctx.drawImage(cloud.c,dr-W,0,W,H);
-  if(freshS){   /* 置いたばかりの雲は、その雲の絵だけを薄く重ねてふわっと出す */
-    ctx.save();ctx.translate(dr,0);layDown(ctx,freshS,freshA);
-    ctx.translate(-W,0);layDown(ctx,freshS,freshA);ctx.restore();
+  if(liveS&&liveS.pc&&liveS.pc.cv){   /* 描いている最中の雲は、その雲の絵だけを重ねる (なぞり始めはふわっと出す) */
+    var pc=liveS.pc,offs=[0];if(pc.ox+dr<0)offs.push(W);if(pc.ox+pc.w/pc.q+dr>W)offs.push(-W);
+    ctx.save();ctx.globalAlpha=liveA;
+    for(var oi=0;oi<offs.length;oi++){ctx.drawImage(pc.cv,pc.ox+dr+offs[oi],pc.oy,pc.w/pc.q,pc.h/pc.q);
+      ctx.drawImage(pc.cv,pc.ox+dr+offs[oi]-W,pc.oy,pc.w/pc.q,pc.h/pc.q);}
+    ctx.restore();
   }
 
   ctx.globalCompositeOperation='lighter';
@@ -900,36 +996,62 @@ function loop(now){
   if(!lastT)lastT=now;
   var dt=clamp((now-lastT)/1000,0,0.05);lastT=now;
   drift+=S.wind*14*dt;
-  if(freshS){freshA=Math.min(1,freshA+dt*2.6);if(freshA>=1)bakeFresh();}
+  if(liveS&&liveA<1)liveA=Math.min(1,liveA+dt*4);
   composite(now);
   requestAnimationFrame(loop);
 }
 
 /* ================= strokes ================= */
-/* 画面いっぱいの「置いたばかり」の層は持たない。
-   それを下地へ写すだけで 1回 200ms かかり、なぞり始めに毎回引っかかっていた */
-function bakeFresh(){
-  if(!freshS)return;
-  layDown(cloud.x,freshS,1);
-  freshS=null;freshA=1;
-}
 function layerX(x){return((x-drift)%W+W)%W;}
 var SZ={scale:1.3,nyudo:1.05,erase:0.7,une:1.15,haze:1.35,hikou:1.6};
 var gid=0;   /* ひとなぞりの番号。元に戻すは、この番号ごとにまとめて戻す */
+var CLOUDS={cumulus:1,nyudo:1,une:1,scale:1,haze:1,cirrus:1,hikou:1};
+/* 光と消しゴムは、前と同じく点ごとの記録 (光は太陽から差す筋、消しゴムは丸く消す) */
 function addStroke(x,y,tap,ang){
-  var t=S.tool;
-  var R=baseR()*(SZ[t]||1);
+  var t=S.tool,R=baseR()*(SZ[t]||1);
   var s={t:t,x:t==='ray'?x:layerX(x),y:y,R:R,seed:(Math.random()*1e6)|0,a:ang||0,g:gid};
-  if(t==='erase')s.rx=x;   /* screen position, for the shaft layer */
+  if(t==='erase')s.rx=x;
   strokes.push(s);
   if(t==='ray'){stampRay(s);return;}
-  bakeFresh();
   if(t==='erase'){stampErase(s);return;}
-  shapeCloud(s);
-  if(!s.pc)return;
-  lightCloud(s);
-  if(tap){freshS=s;freshA=0;}
-  else layDown(cloud.x,s,1);
+}
+/* 雲のなぞりを始める。場所は、なぞり始めの点の「流れる層」での位置にそろえる
+   (途中で層の端をまたいでも、座標がとばないように、以後はずらさず続ける) */
+function cloudStart(x,y){
+  var t=S.tool,R=baseR()*(SZ[t]||1),s={t:t,g:gid,R:R,seed:(Math.random()*1e6)|0,p:[],live:true,arc:0,carry:0,seen:{},moved:0};
+  s.off=layerX(x)-(x-drift);s.x=layerX(x);s.y=y;s.a=-0.12;s.r=rng(s.seed^0x5bd1e995);
+  if(t==='cirrus'){s.lanes=[];var n=7+Math.floor(s.r()*4);
+    for(var k=0;k<n;k++)s.lanes.push({off:(k-(n-1)/2)*R*0.09+(s.r()-0.5)*R*0.05,len:R*(1.4+s.r()*1.4),on:0.7+s.r()*0.25,
+      shift:s.r()*R*2,ph:s.r()*6.28,w:0.7+s.r()*0.5});}
+  strokes.push(s);liveS=s;liveA=0.35;s.lx=s.x;s.ly=y;
+  if(t!=='hikou'&&t!=='cirrus'){var d=[1e9,1e9,-1e9,-1e9],out=[];brushAt(s,s.x,y,0,out);depositAll(s,out,d);fieldUpdate(s,d);}
+  return s;
+}
+/* 指が動いたぶんを、決まった間隔の点に細かく分けて足す (指の速さで間が空かない) */
+function cloudMove(s,x,y){
+  var nx=x-drift+s.off,dx=nx-s.lx,dy=y-s.ly,L=Math.hypot(dx,dy);if(L<0.5)return;
+  var sp=s.R*(BRUSH_SP[s.t]||0.3),ang=Math.atan2(dy,dx),out=[],d=[1e9,1e9,-1e9,-1e9];
+  s.moved+=L;s.a=ang;
+  var tpos=sp-s.carry;
+  while(tpos<=L){var f=tpos/L;s.arc+=sp;brushAt(s,s.lx+dx*f,s.ly+dy*f,ang,out);tpos+=sp;}
+  s.carry=L-(tpos-sp);
+  s.lx=nx;s.ly=y;
+  depositAll(s,out,d);if(s.pc)fieldUpdate(s,d);
+}
+/* 指を離した: 動かさずに離した (タップ) なら、その場に 1 つぶんの雲を育てる。
+   場を仕上げ (後光を付け)、流れる層へ貼る */
+function cloudEnd(s){
+  if(s.moved<s.R*0.15&&s.t!=='hikou'){
+    var R=s.R,x=s.x,y=s.y,t=s.t,out=
+      t==='cumulus'?genCumulus(x,y,R,s.seed):t==='nyudo'?genNyudo(x,y,R,s.seed):t==='une'?genUne(x,y,R,s.seed):
+      t==='scale'?genScale(x,y,R,s.seed):t==='haze'?genHaze(x,y,R,s.seed):genCirrus(x,y,R,s.seed,-0.12);
+    var d=[1e9,1e9,-1e9,-1e9];depositAll(s,out,d);if(s.pc)fieldUpdate(s,d);
+  }
+  s.live=false;if(liveS===s)liveS=null;
+  if(!s.pc){strokes.splice(strokes.indexOf(s),1);return;}
+  if(s.pc.key!==lightKey())fieldLight(s,0,0,s.pc.w-1,s.pc.h-1);
+  fieldFinish(s);s.pc.cv=null;s.pc.A=null;s.seen=null;
+  layDown(cloud.x,s,1);
 }
 /* 取っておいた塗りを順に貼り直す。太陽や色が変わって塗りが古い雲は塗り直す。
    budget(ms) を渡すと、その時間を超えたぶんは古い塗りのまま貼り、
@@ -937,7 +1059,6 @@ function addStroke(x,y,tap,ang){
 function rebuild(budget){
   cloud.x.setTransform(dpr,0,0,dpr,0,0);cloud.x.clearRect(0,0,W,H);
   rays.x.setTransform(dpr,0,0,dpr,0,0);rays.x.clearRect(0,0,W,H);
-  freshS=null;
   var key=lightKey(),t0=performance.now(),stale=false;
   for(var i=0;i<strokes.length;i++){
     var s=strokes[i];
@@ -946,10 +1067,10 @@ function rebuild(budget){
     if(s.pc===undefined)shapeCloud(s);
     if(!s.pc)continue;
     if(s.pc.key!==key){
-      if(budget===undefined||!s.pc.img||performance.now()-t0<budget)lightCloud(s);
+      if(budget===undefined||(!s.pc.img&&!s.live)||performance.now()-t0<budget)lightCloud(s);
       else stale=true;
     }
-    layDown(cloud.x,s,1);
+    if(!s.live)layDown(cloud.x,s,1);
   }
   return stale;
 }
@@ -992,19 +1113,22 @@ function down(e){
   var p=pos(e);hideHint();drawing=true;gid++;setDrawing(true);
   if(S.tool==='sun'){S.sunX=p.x/W;S.sunY=p.y/H;rebuildSoon();return;}
   lx=p.x;ly=p.y;
-  if(S.tool==='hikou')return;   /* wait for a drag direction */
-  addStroke(p.x,p.y,true,-0.12);
+  if(CLOUDS[S.tool]){cloudStart(p.x,p.y);return;}
+  if(S.tool!=='hikou')addStroke(p.x,p.y,true,-0.12);
 }
 function move(e){
   if(!drawing)return;e.preventDefault();
   var p=pos(e);
   if(S.tool==='sun'){S.sunX=p.x/W;S.sunY=p.y/H;rebuildSoon();return;}
-  var GAP={cumulus:0.8,nyudo:1.1,erase:0.35,une:1.0,haze:1.6,hikou:1.1};
-  var gap=baseR()*(GAP[S.tool]||0.85);
-  var vx=p.x-lx, vy=p.y-ly;
-  if(Math.hypot(vx,vy)<gap)return;
+  if(liveS){cloudMove(liveS,p.x,p.y);return;}
+  /* 消しゴムは間隔 0.35R、光は 0.85R ごと。消しゴムは間を細かく補って、速く動かしても消し残さない */
+  var gap=baseR()*(S.tool==='erase'?0.35*0.7:0.85);
+  var vx=p.x-lx,vy=p.y-ly,L=Math.hypot(vx,vy);
+  if(L<gap)return;
   var ang=Math.atan2(vy,vx);
-  lx=p.x;ly=p.y;addStroke(p.x,p.y,false,ang);
+  if(S.tool==='erase'){var n=Math.floor(L/gap);for(var k=1;k<=n;k++)addStroke(lx+vx*k/n,ly+vy*k/n,false,ang);}
+  else addStroke(p.x,p.y,false,ang);
+  lx=p.x;ly=p.y;
 }
 /* 描いている間は道具箱を引っ込める。離して少ししてから戻す */
 var dockT=null;
@@ -1013,7 +1137,7 @@ function setDrawing(on){
   if(on)document.body.classList.add('drawing');
   else dockT=setTimeout(function(){document.body.classList.remove('drawing');},350);
 }
-function up(){if(drawing)setDrawing(false);drawing=false;}
+function up(){if(drawing)setDrawing(false);drawing=false;if(liveS)cloudEnd(liveS);}
 cv.addEventListener('touchstart',down,{passive:false});
 cv.addEventListener('touchmove',move,{passive:false});
 cv.addEventListener('touchend',up);

@@ -146,6 +146,46 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('下絵を外すと消える', !has && dd(off, skyBefore) < 12, JSON.stringify(off));
   await p.evaluate(() => document.querySelector('.preset[data-k=kumoue]').click());
 
+  // --- なぞって描く雲 (ハンコのように並べない) ---
+  const br = await p.evaluate(async () => {
+    const cv = document.getElementById('cv'), A = window.__app, out = {};
+    const w = document.getElementById('windR'); w.value = 0; w.dispatchEvent(new Event('input'));
+    function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
+    const seedRand = (sd) => { let s = sd; Math.random = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }; };
+    const rnd0 = Math.random;
+    // 同じ乱数・同じ線を、指の動きの知らせ 60 回 (ゆっくり) と 6 回 (速く) でなぞる
+    async function draw(tool, n, keepOpen) { document.querySelector('[data-t=' + tool + ']').click(); seedRand(777);
+      T('touchstart', 60, 420); for (let i = 1; i <= n; i++) T('touchmove', 60 + 310 * i / n, 420);
+      const s = A.strokes()[A.strokes().length - 1];
+      if (keepOpen) { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return s; }
+      T('touchend', 0, 0); Math.random = rnd0; return s; }
+    const cover = s => { const d = s.pc.lit.data; let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 128) c++; return c / (s.pc.q * s.pc.q); };
+    // なぞった線に沿って、横幅の中でいちばん濃い所の並び。いちばん薄い所 ÷ 真ん中
+    const along = s => { const pc = s.pc, d = pc.lit.data, prof = [];
+      for (let x = 100; x <= 330; x += 3) { let mx = 0; for (let y = 420 - s.R * 0.9; y <= 420 + s.R * 0.4; y += 1.5) {
+        const X = Math.round((x - pc.ox) * pc.q), Y = Math.round((y - pc.oy) * pc.q); if (X < 0 || Y < 0 || X >= pc.w || Y >= pc.h) continue; mx = Math.max(mx, d[(Y * pc.w + X) * 4 + 3]); } prof.push(mx); }
+      const so = prof.slice().sort((a, b) => a - b); return so[0] / (so[so.length >> 1] || 1); };
+    for (const tool of ['cumulus', 'cirrus']) {
+      const n0 = A.strokes().length, slow = await draw(tool, 60), n1 = A.strokes().length;
+      const cs = cover(slow), es = along(slow); document.getElementById('undoBtn').click();
+      const fast = await draw(tool, 6), cf = cover(fast), ef = along(fast); document.getElementById('undoBtn').click();
+      out[tool] = { perDrag: n1 - n0, ratio: +(cf / cs).toFixed(2), evenSlow: +es.toFixed(2), evenFast: +ef.toFixed(2) };
+    }
+    // なぞっている最中にも雲が見える (指を離す前に、画面の線の上が変わっている)
+    const k = cv.width / 430, px = () => [...cv.getContext('2d').getImageData(Math.round(215 * k), Math.round(405 * k), 1, 1).data].slice(0, 3);
+    // 直前に元に戻した雲が、まだ描き直し前のコマに残っていることがある。描き直されてから測る
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const before = px(); const live = await draw('cumulus', 30, true); await new Promise(r => setTimeout(r, 300)); const during = px();
+    T('touchend', 0, 0); Math.random = rnd0; document.getElementById('undoBtn').click();
+    out.liveDiff = Math.abs(before[0] - during[0]) + Math.abs(before[1] - during[1]) + Math.abs(before[2] - during[2]);
+    return out;
+  });
+  check('ひとなぞりで雲は 1 つ (綿雲・筋雲)', br.cumulus.perDrag === 1 && br.cirrus.perDrag === 1, JSON.stringify([br.cumulus.perDrag, br.cirrus.perDrag]));
+  check('指の速さで雲の量が変わらない (速く ÷ ゆっくり 0.85〜1.18)', ['cumulus', 'cirrus'].every(t => br[t].ratio >= 0.85 && br[t].ratio <= 1.18), JSON.stringify([br.cumulus.ratio, br.cirrus.ratio]));
+  check('速くなぞっても切れ目ができない (線に沿った濃さ: 薄い所 ÷ 真ん中 > 0.45)', ['cumulus', 'cirrus'].every(t => br[t].evenFast > 0.45), JSON.stringify(br));
+  check('なぞっている最中にも雲が見える', br.liveDiff > 30, '画面の差=' + br.liveDiff);
+
   // --- 雲の形と細かさ ---
   const cl = await p.evaluate(async () => {
     const cv = document.getElementById('cv'), A = window.__app;
@@ -163,8 +203,10 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     { const pc = hk.pc, a = hk.a, n = 60; let gaps = 0; const prof = [];
       // 先頭では2本のエンジンの跡が左右に分かれるので、真ん中の線ではなく、横幅の中でいちばん濃い所を見る。
       // 両端はわざと細く消しているので、真ん中 6 割だけを見る
-      for (let i = 12; i <= n - 12; i++) { const t = i / n - 0.5, L = hk.R * 1.7; let mx = 0;
-        for (let o = -0.08; o <= 0.08; o += 0.01) { const wx = hk.x + Math.cos(a) * L * t - Math.sin(a) * hk.R * o, wy = hk.y + Math.sin(a) * L * t + Math.cos(a) * hk.R * o;
+      // ひとなぞりで 1 本の雲なので、なぞった線 (始点 hk.x,hk.y から 320 右・80 上) に沿って測る
+      const ex = 320, ey = -80, a2 = Math.atan2(ey, ex), L2 = Math.hypot(ex, ey);
+      for (let i = 12; i <= n - 12; i++) { const t = i / n; let mx = 0;
+        for (let o = -0.08; o <= 0.08; o += 0.01) { const wx = hk.x + ex * t - Math.sin(a2) * hk.R * o, wy = hk.y + ey * t + Math.cos(a2) * hk.R * o;
           const x = Math.round((wx - pc.bb.x) * pc.q), y = Math.round((wy - pc.bb.y) * pc.q); mx = Math.max(mx, pc.D[y * pc.w + x] || 0); }
         if (!(mx > 0.1)) gaps++; prof.push(mx); }
       // 玉の連なりだと、線に沿って濃い・薄いが波打つ。いちばん薄い所 ÷ 真ん中の値
@@ -377,7 +419,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   });
   check('描いている最中に画面いっぱいの絵を写さない', perf.drawFull === 0, 'full=' + perf.drawFull);
   check('画面いっぱいの層にぼかしを掛けない (後光は雲ごとに作り置き)', perf.rebuildBlur === 0 && perf.drawBlur === 0, 'rebuild=' + perf.rebuildBlur + ' draw=' + perf.drawBlur);
-  check('元に戻すで、ひとなぞりぶん (' + perf.sameG + '個) がまとめて消える', perf.sameG > 1 && perf.n0 - perf.n1 === perf.sameG, perf.n0 + '→' + perf.n1);
+  check('ひとなぞりで雲は 1 つ (ハンコのように並べない)。元に戻すで、ひとなぞりぶんが消える', perf.sameG === 1 && perf.n0 - perf.n1 === 1, 'ひとなぞりの雲の数=' + perf.sameG + ' ' + perf.n0 + '→' + perf.n1);
   check('描き直しで雲の形を作り直さない', perf.kept);
   check('太陽を動かしたら、少しずつでも全部塗り直し終わる', perf.fresh && perf.frames > 0, 'frames=' + perf.frames);
 
