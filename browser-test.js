@@ -104,6 +104,48 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   });
   check('タップした所に雲ができる (キャンバスが 40px 下に置かれていても)', tp.every(v => Math.abs(v) <= 1), '指との縦のずれ=' + JSON.stringify(tp));
 
+  // --- 写真から (色と太陽を取る / 下絵にする) ---
+  // 確かめ用の写真 (3:4 の縦長。画面に合わせると左右が切られる): 上 #1a3d7a → 中 #5f8fc8 → 地平線 #f0c89a、
+  // 右上に光のにじむ太陽、左に雲 (真っ白な回と、少し灰色の回)、下 28% は暗い地面とビル
+  const photo = async (white) => { const b64 = await p.evaluate((white) => { const c = document.createElement('canvas'); c.width = 600; c.height = 800; const g = c.getContext('2d');
+      const gr = g.createLinearGradient(0, 0, 0, 576); gr.addColorStop(0, '#1a3d7a'); gr.addColorStop(0.5, '#5f8fc8'); gr.addColorStop(1, '#f0c89a'); g.fillStyle = gr; g.fillRect(0, 0, 600, 576);
+      const sg = g.createRadialGradient(420, 200, 0, 420, 200, 160); sg.addColorStop(0, 'rgba(255,250,235,1)'); sg.addColorStop(0.15, 'rgba(255,240,210,.85)'); sg.addColorStop(1, 'rgba(255,230,200,0)');
+      g.fillStyle = sg; g.fillRect(0, 0, 600, 576); g.fillStyle = '#fffef8'; g.beginPath(); g.arc(420, 200, 22, 0, 7); g.fill();
+      g.fillStyle = white ? '#ffffff' : '#f3f3f1'; for (const [x, y, r] of [[120, 300, 40], [160, 290, 50], [200, 305, 38], [380, 420, 30], [420, 410, 40]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+      g.fillStyle = '#2a2420'; g.fillRect(0, 576, 600, 224); for (let x = 0; x < 600; x += 40) g.fillRect(x, 576 - ((x * 7) % 90), 30, 100);
+      return c.toDataURL('image/png').split(',')[1]; }, white);
+    const f = path.join(require('os').tmpdir(), 'kumo-photo-' + (white ? 'w' : 'g') + '.png'); fs.writeFileSync(f, Buffer.from(b64, 'base64')); return f; };
+  const pickPhoto = async (btn, file) => { await p.evaluate(() => document.getElementById('sheet').classList.add('open'));
+    const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.click(btn)]); await fc.setFiles(file); await p.waitForTimeout(700); };
+  const hexd = (a, b) => { const h = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = h(a), B = h(b); return Math.round(Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2])); };
+  const ph = {};
+  for (const white of [false, true]) {
+    await pickPhoto('#phColor', await photo(white));
+    ph[white ? 'w' : 'g'] = await p.evaluate(() => { const S = window.__app.S; return { theme: S.theme, top: S.top, hz: S.hz, sx: S.sunX, sy: S.sunY, sheet: document.getElementById('sheet').classList.contains('open') }; });
+  }
+  // 太陽の正解は、写真を画面に合わせて切ったときの位置: 横 (420*932/800 - 134.5)/430 = 0.826、縦 0.25
+  check('写真から空の色を取る (上の色が写真に近く、地平線ぎわは地面の暗い色でなく明るい)', ph.g.theme === 'photo' && hexd(ph.g.top, '#1a3d7a') < 30 && hexd(ph.g.hz, '#2a2420') > 150, JSON.stringify(ph.g));
+  check('写真の太陽の位置に太陽を置く (雲が真っ白に飛んでいても、雲と取り違えない)', ['g', 'w'].every(k => Math.abs(ph[k].sx - 0.826) < 0.03 && Math.abs(ph[k].sy - 0.25) < 0.03), ['g', 'w'].map(k => ph[k].sx.toFixed(3) + ',' + ph[k].sy.toFixed(3)).join(' / '));
+  check('写真を選んだら、結果が見えるようシートを閉じる', !ph.g.sheet && !ph.w.sheet);
+  // 下絵: 空に写真が敷かれ、保存する絵には入らず、外すと消える。測るのは写真の雲 (160,290) が画面に来る所 (52,338)
+  const skyPx = () => p.evaluate(() => { const c = document.getElementById('cv'), k = c.width / 430; return [...c.getContext('2d').getImageData(Math.round(52 * k), Math.round(338 * k), 1, 1).data].slice(0, 3); });
+  const hiddenBefore = await p.evaluate(() => ['phOff', 'phRow'].map(id => getComputedStyle(document.getElementById(id)).display));
+  check('下絵を敷く前は「下絵を外す」と「濃さ」を出さない', hiddenBefore.every(d => d === 'none'), JSON.stringify(hiddenBefore));
+  const skyBefore = await skyPx();
+  await pickPhoto('#phUnder', await photo(true)); await p.waitForTimeout(200);
+  const withU = await skyPx();
+  const snap = await p.evaluate(async () => { const cv = document.getElementById('cv'), k = cv.width / 430; document.getElementById('saveBtn').click();
+    const im = new Image(); im.src = document.getElementById('veilImg').src; await im.decode(); document.getElementById('veilClose').click();
+    const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    return [...g.getImageData(Math.round(52 * k), Math.round(338 * k), 1, 1).data].slice(0, 3); });
+  await p.evaluate(() => document.getElementById('phOff').click()); await p.waitForTimeout(200);
+  const off = await skyPx(); const has = await p.evaluate(() => !!window.__app.under());
+  const dd = (a, b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
+  check('下絵にすると、写真 (白い雲) が空に薄く敷かれる', dd(skyBefore, withU) > 40, JSON.stringify([skyBefore, withU]));
+  check('保存する絵には下絵を入れない', dd(snap, skyBefore) < 12, JSON.stringify([snap, skyBefore]));
+  check('下絵を外すと消える', !has && dd(off, skyBefore) < 12, JSON.stringify(off));
+  await p.evaluate(() => document.querySelector('.preset[data-k=kumoue]').click());
+
   // --- 雲の形と細かさ ---
   const cl = await p.evaluate(async () => {
     const cv = document.getElementById('cv'), A = window.__app;

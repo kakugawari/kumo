@@ -22,6 +22,7 @@
     --line:rgba(255,255,255,.16);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  [hidden]{display:none!important;}   /* ボタンや並びに付けた display:flex が hidden を打ち消さないように */
   /* ホーム画面から開くと、iOS は「割合で数えた高さ」を上の安全域ぶん短く渡す
      (描ける873 / 実際932)。根っこを 100vh にすると渡される高さ自体が 932 になる。
      全画面のものは fixed ではなく、この根っこの中に absolute で置く */
@@ -299,7 +300,18 @@
     <div class="row wide"><label for="windR">風 — 雲が流れる速さ</label>
       <input type="range" id="windR" min="0" max="100" value="5" style="max-width:56%"></div>
   </div>
-  <p class="hintline">「太陽」(夜は「月」)を選んで空をなぞると光源が動き、雲の陰影も付け直されます。</p>
+  <h2>写真から</h2>
+  <div class="gchips">
+    <button class="gchip" id="phColor" type="button">色と太陽を取る</button>
+    <button class="gchip" id="phUnder" type="button">下絵にする</button>
+    <button class="gchip" id="phOff" type="button" hidden>下絵を外す</button>
+  </div>
+  <div class="rows" id="phRow" hidden style="margin-top:8px">
+    <div class="row wide"><label for="phAlpha">下絵の濃さ</label>
+      <input type="range" id="phAlpha" min="10" max="90" value="55" style="max-width:56%"></div>
+  </div>
+  <input type="file" id="phFile" accept="image/*" hidden>
+  <p class="hintline">写真は、この端末の中だけで使います。どこにも送りません。<br>「太陽」(夜は「月」)を選んで空をなぞると光源が動き、雲の陰影も付け直されます。</p>
 </div>
 
 <div class="title" id="title">
@@ -343,7 +355,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v15';   /* sw.js の CACHE と揃える */
+var VER='v16';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -712,6 +724,7 @@ function buildSky(){
     g.fillStyle=bg;g.fillRect(0,y2-bh,W,bh*2);
   }
   if(!isNight())paintSunGlow(g);
+  if(under&&underOn){g.globalAlpha=underA;g.drawImage(under,0,0,W,H);g.globalAlpha=1;}   /* 下絵 (写真) は空の下地に焼き付ける */
   drawGround();
   document.documentElement.style.backgroundColor=S.skyMid?S.sea:S.bot;
   sunSprite=null;
@@ -1025,6 +1038,85 @@ GROUPS.forEach(function(grp,gi){
 document.getElementById('size').addEventListener('input',function(e){S.size=e.target.value/100;wake();});
 
 /* the sun becomes the moon once the sky is dark enough */
+/* ================= 写真から =================
+   1. 色と太陽を取る: 空の上・中・地平線ぎわの色と、太陽 (いちばん明るい所) を写真から測る
+   2. 下絵にする: 写真を空の上に薄く敷く (保存する絵には入れない)
+   写真は画面と同じ切り方 (はみ出す所を切る cover) で合わせる。端末の外へは出さない */
+var under=null,underOn=true,underA=0.55,phMode='';
+function loadPhoto(file,cb){
+  var url=URL.createObjectURL(file),im=new Image();
+  im.onload=function(){
+    /* 画面と同じ縦横比に切って縮める (大きな写真を丸ごと持たない) */
+    var c=document.createElement('canvas');c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);
+    var g=c.getContext('2d',{willReadFrequently:true}),sc=Math.max(c.width/im.naturalWidth,c.height/im.naturalHeight),
+        dw=im.naturalWidth*sc,dh=im.naturalHeight*sc;
+    g.drawImage(im,(c.width-dw)/2,(c.height-dh)/2,dw,dh);
+    URL.revokeObjectURL(url);cb(c);
+  };
+  im.onerror=function(){URL.revokeObjectURL(url);};
+  im.src=url;
+}
+function hexOf(a){return'#'+a.map(function(v){v=Math.round(clamp(v,0,255)).toString(16);return v.length<2?'0'+v:v;}).join('');}
+/* 写真の空を測る。各行で「明るさが下から 35% の画素」を空の色とみなす (白い雲に引っぱられない)。
+   上から見ていき、明るさが急に落ちた所 (建物・山・地面) を空の終わりとする */
+function readSky(c){
+  var sw=90,sh=Math.round(90*c.height/c.width),t=document.createElement('canvas');t.width=sw;t.height=sh;
+  var g=t.getContext('2d',{willReadFrequently:true});g.drawImage(c,0,0,sw,sh);
+  var d=g.getImageData(0,0,sw,sh).data,rows=[],x,y,i;
+  function L(q){return q[0]*0.299+q[1]*0.587+q[2]*0.114;}
+  for(y=0;y<sh;y++){var px=[];for(x=0;x<sw;x++){i=(y*sw+x)*4;px.push([d[i],d[i+1],d[i+2]]);}
+    px.sort(function(a,b){return L(a)-L(b);});rows.push({c:px[Math.floor(sw*0.35)],hi:px[Math.floor(sw*0.92)]});}
+  var topL=0,n=Math.max(1,Math.round(sh*0.08));for(y=0;y<n;y++)topL+=L(rows[y].c)/n;
+  var end=sh-1;
+  for(y=n;y<sh;y++){var prev=rows[y-1].c,cur=rows[y].c;
+    var jump=Math.hypot(cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2]);
+    if(L(cur)<Math.max(22,topL*0.45)||jump>55){end=y-1;break;}}
+  end=Math.max(end,Math.round(sh*0.25));
+  function at(f){var k=Math.min(end,Math.round(end*f)),a=[0,0,0],m=0;
+    for(var j=Math.max(0,k-1);j<=Math.min(end,k+1);j++){a[0]+=rows[j].c[0];a[1]+=rows[j].c[1];a[2]+=rows[j].c[2];m++;}
+    return hexOf([a[0]/m,a[1]/m,a[2]/m]);}
+  /* 雲の色: 空の中で明るい画素 (92%) の平均。空より十分明るくなければ、雲は少ないとみなす */
+  var cl=[0,0,0],cn=0,skyL=0;for(y=0;y<=end;y++){cl[0]+=rows[y].hi[0];cl[1]+=rows[y].hi[1];cl[2]+=rows[y].hi[2];cn++;skyL+=L(rows[y].c);}
+  cl=cl.map(function(v){return v/cn;});skyL/=cn;
+  /* 太陽: 白く飛んだ所のうち、まわり (半径 8) の「飛んでいない画素」がいちばん明るい所。
+     太陽のまわりは光がにじんで明るく、白い雲のまわりはすぐ青い空になって暗い。
+     (明るさだけで選ぶと、真っ白な雲を太陽と取り違えた) */
+  var Lm=new Float32Array(sw*sh);for(i=0;i<sw*sh;i++)Lm[i]=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;
+  var best=-1,bx=0,by=0;
+  for(y=1;y<=end-1;y++)for(x=1;x<sw-1;x++){
+    var c9=0,dy,dx;for(dy=-1;dy<=1;dy++)for(dx=-1;dx<=1;dx++)c9+=Lm[(y+dy)*sw+x+dx];c9/=9;
+    if(c9<250)continue;
+    var ring=0,rn=0;for(dy=-8;dy<=8;dy++)for(dx=-8;dx<=8;dx++){var yy=y+dy,xx=x+dx;if(yy<0||xx<0||yy>=sh||xx>=sw)continue;
+      var v=Lm[yy*sw+xx];if(v<250){ring+=v;rn++;}}
+    if(rn<40)continue;   /* まわりまで白く飛んでいる所 (大きな白い雲の中) は外す。1〜2 個の縁の画素で決めてしまう */
+    var sc2=ring/rn;if(sc2>best){best=sc2;bx=x;by=y;}}
+  return{top:at(0.03),skyMid:at(0.42),bot:at(0.85),hz:at(1),cloud:L(cl)>skyL+25?hexOf(cl):null,
+         sun:best>0?{x:(bx+0.5)/sw,y:(by+0.5)/sh}:null,end:(end+1)/sh};
+}
+function applyPhotoSky(r){
+  S.theme='photo';
+  S.top=r.top;S.skyMid=r.skyMid;S.bot=r.bot;S.hz=r.hz;S.hzY=0.80;S.sea=mix(r.hz,'#1a1420',0.35);
+  var cc=r.cloud||mix(r.bot,'#ffffff',0.55);
+  S.mid=cc;S.dark=mix(cc,S.skyMid,0.45);S.dark=mix(S.dark,'#131a2c',0.25);S.light=mix(cc,'#ffffff',0.55);S.rim=mix(S.sun,'#ffffff',0.3);
+  if(r.sun){S.sunX=r.sun.x;S.sunY=r.sun.y;}
+  Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed','false');});
+  syncInputs();updateCelestial();rebuildSoon();
+}
+function setUnder(c){
+  under=c;underOn=!!c;
+  document.getElementById('phOff').hidden=!c;document.getElementById('phRow').hidden=!c;
+  buildSky();
+}
+var phFile=document.getElementById('phFile');
+document.getElementById('phColor').addEventListener('click',function(){phMode='color';phFile.value='';phFile.click();});
+document.getElementById('phUnder').addEventListener('click',function(){phMode='under';phFile.value='';phFile.click();});
+document.getElementById('phOff').addEventListener('click',function(){setUnder(null);});
+document.getElementById('phAlpha').addEventListener('input',function(e){underA=e.target.value/100;buildSky();});
+phFile.addEventListener('change',function(){
+  var f=phFile.files&&phFile.files[0];if(!f)return;
+  loadPhoto(f,function(c){if(phMode==='under')setUnder(c);else applyPhotoSky(readSky(c));sheet.classList.remove('open');});   /* 結果が見えるよう、シートを閉じる */
+});
+
 /* ================= 足もと =================
    なし / 雲海 (絵) / 山・街・丘・海辺 (1色のシルエットを計算で描く仮のもの。絵が来たら差し替える)。
    シルエットの色は空から決める: 手前ほど暗く、遠いほど地平線の色に溶ける */
@@ -1200,8 +1292,11 @@ clearBtn.addEventListener('click',function(){
 var veil=document.getElementById('veil'),veilImg=document.getElementById('veilImg');
 /* 保存する絵には足もとも入れる (キャンバスの外にあるので、同じ位置・同じ溶かし方で重ねる) */
 function snapshot(){
+  var hadUnder=under&&underOn;
+  if(hadUnder){underOn=false;buildSky();composite(performance.now());}   /* 下絵は保存する絵に入れない */
   var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;var g=c.getContext('2d');
   g.drawImage(cv,0,0);
+  if(hadUnder){underOn=true;buildSky();}
   var se=document.getElementById('sea'),r=se.getBoundingClientRect(),k=cv.width/W;
   if(S.ground!=='none'&&S.ground!=='sea'){var gr=groundEl.getBoundingClientRect();g.drawImage(groundEl,Math.round(gr.left*k),Math.round(gr.top*k),Math.round(gr.width*k),Math.round(gr.height*k));}
   if(S.ground==='sea'&&se.complete&&se.naturalWidth){
@@ -1276,7 +1371,7 @@ titleEl.querySelector('.bg').parentNode.addEventListener('click',function(e){if(
 buildNoise();buildGrain();resize();requestAnimationFrame(loop);
 
 /* テストから中身をのぞく入口 (browser-test.js が使う) */
-window.__app={S:S,buildSky:buildSky,strokes:function(){return strokes;},rebuild:rebuild,lightCloud:lightCloud,lightKey:lightKey};
+window.__app={readSky:readSky,under:function(){return under;},S:S,buildSky:buildSky,strokes:function(){return strokes;},rebuild:rebuild,lightCloud:lightCloud,lightKey:lightKey};
 
 /* service worker */
 if('serviceWorker' in navigator){
