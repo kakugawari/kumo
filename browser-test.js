@@ -54,7 +54,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
   check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-  check('タイトルの絵を、オフライン用に先読みする', /'\.\/title-bg\.jpg'/.test(sw) && /'\.\/title-logo\.png'/.test(sw));
+  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'tools.webp', 'sea.jpg'].every(f => sw.includes("'./" + f + "'")));
 
   // --- プレイ画面の空は、タイトルの空と同じ世界 (雲の上) ---
   const sky = await p.evaluate(async () => {
@@ -66,7 +66,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     const band = (ctx, y, sc) => { const d = ctx.getImageData(Math.round(10 * sc), Math.round(y * 932 * sc), Math.round(30 * sc), Math.round(6 * sc)).data;
       let r = 0, gg = 0, bb = 0, n = d.length / 4; for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; bb += d[i + 2]; } return [r / n, gg / n, bb / n]; };
     const dist = (a, b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
-    const ys = [0.08, 0.2, 0.89];
+    const ys = [0.08, 0.2, 0.3];
     const d = ys.map(y => dist(band(g, y, 1), band(cg, y, k)));
     // 1コマで、画面いっぱいの層に丸いグラデーションを何回作るか (太陽の照りを毎コマ塗っていないか)
     const C = CanvasRenderingContext2D.prototype, rg = C.createRadialGradient; let n = 0;
@@ -77,9 +77,48 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     return { theme: window.__app.S.theme, d, per, sunLabel: document.querySelector('[data-t=sun] small').textContent };
   });
   check('はじめの空は「雲の上」', sky.theme === 'kumoue', sky.theme);
-  check('プレイ画面の空の色が、タイトルの空に近い (上・中・地平線)', sky.d.every(v => v < 60), JSON.stringify(sky.d));
+  check('プレイ画面の空の色が、タイトルの空に近い (上・中)', sky.d.every(v => v < 60), JSON.stringify(sky.d));
   check('雲の上の空で、太陽が月にならない', sky.sunLabel === '太陽', sky.sunLabel);
   check('太陽の照りを毎コマ塗らない (空の下地に焼き付け)', sky.per <= 1, 'radialGradient/コマ=' + sky.per);
+
+  // --- 道具箱・雲海 ---
+  const dk = await p.evaluate(async () => {
+    const tools = [...document.querySelectorAll('.tool')];
+    const pos = tools.map(t => t.querySelector('i').style.backgroundPosition);
+    const im = new Image(); im.src = 'tools.webp'; await im.decode();
+    // 絵の中の各アイコンの四隅が透明か (市松模様が残っていないか)
+    const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    const Z = im.naturalHeight, n = im.naturalWidth / Z, corners = [];
+    for (let i = 0; i < n; i++) for (const [x, y] of [[2, 2], [Z - 3, 2], [2, Z - 3], [Z - 3, Z - 3]]) corners.push(g.getImageData(i * Z + x, y, 1, 1).data[3]);
+    const dock = document.querySelector('.dock').getBoundingClientRect();
+    const sea = document.getElementById('sea');
+    return { n: tools.length, uniq: new Set(pos).size, cells: n, cornerMax: Math.max(...corners), dockH: Math.round(dock.height),
+      seaOk: sea.complete && sea.naturalWidth > 0, seaPE: getComputedStyle(sea).pointerEvents, seaBottom: Math.round(sea.getBoundingClientRect().bottom) };
+  });
+  check('道具10個が、それぞれ別の絵を使う', dk.n === 10 && dk.uniq === 10 && dk.cells === 10, dk.n + '個 / 絵' + dk.uniq + '種');
+  check('道具の絵の四隅が透明 (市松模様が残っていない)', dk.cornerMax === 0, 'alpha最大=' + dk.cornerMax);
+  check('道具箱が低い (空を広く見せる)', dk.dockH <= 150, dk.dockH + 'px');
+  check('雲海が画面の下に敷かれ、指を通す', dk.seaOk && dk.seaPE === 'none' && dk.seaBottom === 932, JSON.stringify(dk));
+  // 描いている間は道具箱が引っ込み、離すと戻る (途中で指が取り消されても戻る)
+  const dr = await p.evaluate(async () => {
+    const cv = document.getElementById('cv');
+    function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
+    T('touchstart', 100, 820); const during = document.body.classList.contains('drawing');   // 雲海の上に触れても描ける
+    T('touchcancel', 0, 0); await new Promise(r => setTimeout(r, 500));
+    return { during, after: document.body.classList.contains('drawing') };
+  });
+  check('描いている間は道具箱が引っ込み、指が取り消されても戻る', dr.during && !dr.after, JSON.stringify(dr));
+  // 保存する絵に雲海も入る
+  const sv = await p.evaluate(async () => {
+    const cv = document.getElementById('cv'), k = cv.width / 430;
+    const snapImg = new Image(); document.getElementById('saveBtn').click(); snapImg.src = document.getElementById('veilImg').src; await snapImg.decode();
+    document.getElementById('veilClose').click();
+    const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(snapImg, 0, 0);
+    let diff = 0; for (const x of [60, 215, 370]) { const a = g.getImageData(x * k, 900 * k, 1, 1).data, b = cv.getContext('2d').getImageData(x * k, 900 * k, 1, 1).data; diff += Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]); }
+    return diff;
+  });
+  check('保存する絵に雲海も入る', sv > 30, '下端の差=' + sv);
 
   // 1. 全画面のものが fixed で置かれていない (fixed だと iOS の短い枠に合わせて下が空く)
   const fixed = await p.evaluate(() => [...document.querySelectorAll('body *')]

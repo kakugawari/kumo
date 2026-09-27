@@ -33,6 +33,11 @@
   }
   canvas#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 
+  /* 足もとの雲海 (sea.jpg)。雲より手前なので、キャンバスの上に重ねる。指はキャンバスへ通す。
+     上のふちは空に溶かす。高さ 200px を画面の下に敷き、はみ出す左右は切る */
+  .sea{position:absolute;left:0;right:0;bottom:0;width:100%;height:200px;object-fit:cover;object-position:50% 100%;
+    z-index:1;pointer-events:none;
+    -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 16%);mask-image:linear-gradient(180deg,transparent 0,#000 16%);}
   .ui{transition:opacity .9s ease;}
   body.dim .ui{opacity:.28;}
 
@@ -108,27 +113,31 @@
   input[type=range]::-moz-range-track{height:2px;background:rgba(255,255,255,.3);border-radius:2px;}
   input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:#fff;}
 
+  /* 道具は1列。絵 (tools.webp、10個を横に並べた1枚) を背景として切り出して使う。
+     はみ出したぶんは横に送る。描いている間は下へ引っ込めて、空を広く見せる */
   .tools{
-    display:flex;flex-direction:column;gap:3px;
+    display:flex;align-items:center;gap:2px;width:100%;
     background:var(--panel);border:1px solid var(--line);
     backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
-    border-radius:20px;padding:6px 8px;max-width:100%;overflow-x:auto;scrollbar-width:none;
+    border-radius:22px;padding:6px 8px;overflow-x:auto;scrollbar-width:none;
+    scroll-snap-type:x proximity;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
+            mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
   }
   .tools::-webkit-scrollbar{display:none;}
-  .trow{display:flex;align-items:center;gap:2px;}
-  .trow + .trow{border-top:1px solid rgba(255,255,255,.07);padding-top:3px;}
-  .rlab{
-    flex:0 0 15px;font-style:normal;font-size:9.5px;opacity:.42;
-    text-align:center;letter-spacing:0;
-  }
+  .tsep{flex:0 0 1px;align-self:stretch;margin:10px 3px;background:rgba(255,255,255,.16);}
   .tool{
-    flex:0 0 auto;border:0;background:transparent;border-radius:14px;
-    padding:5px 7px 4px;flex-direction:column;gap:2px;min-width:57px;
+    flex:0 0 auto;border:0;background:transparent;border-radius:16px;scroll-snap-align:center;
+    padding:5px 4px 4px;flex-direction:column;gap:1px;width:62px;
   }
-  .tool svg{width:23px;height:23px;opacity:.82;}
-  .tool small{font-size:9.5px;letter-spacing:0;opacity:.78;white-space:nowrap;}
-  .tool[aria-pressed=true]{background:rgba(255,255,255,.92);color:#111827;}
-  .tool[aria-pressed=true] svg,.tool[aria-pressed=true] small{opacity:1;}
+  .tool i{display:block;width:44px;height:44px;background:url(tools.webp) no-repeat;background-size:1000% 100%;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.18));transition:transform .18s;}
+  .tool small{font-size:10px;letter-spacing:.02em;opacity:.82;white-space:nowrap;}
+  .tool[aria-pressed=true]{background:rgba(255,255,255,.20);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.85);}
+  .tool[aria-pressed=true] i{transform:scale(1.08);}
+  .tool[aria-pressed=true] small{opacity:1;font-weight:600;}
+  .dock{transition:transform .28s cubic-bezier(.3,.8,.3,1),opacity .28s;}
+  body.drawing .dock{transform:translateY(calc(100% - 18px));opacity:.35;pointer-events:none;}
 
   .sheet{
     position:absolute;left:0;right:0;bottom:0;z-index:20;
@@ -223,6 +232,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
+<img class="sea" id="sea" src="sea.jpg" alt="">
 
 <div class="top ui">
   <button id="logo" class="logo" aria-expanded="false" aria-controls="menu">
@@ -325,7 +335,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v10';   /* sw.js の CACHE と揃える */
+var VER='v11';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -336,7 +346,7 @@ var blurOK=(typeof ctx.filter==='string');
 /* 雲の上 (kumoue) はタイトルの空から測った色。真上の濃紺 → 中ほどの青 → 地平線手前の淡い色
    → 地平線の金の帯 (hzY) → その下は雲海。skyMid / hz を持つ空は、この段つきの塗り方をする */
 var THEMES={
-  kumoue  :{name:'雲の上',top:'#08254F',skyMid:'#3E6CA3',bot:'#C8B198',hz:'#DDA062',hzY:0.89,sea:'#B98252',
+  kumoue  :{name:'雲の上',top:'#08254F',skyMid:'#3E6CA3',bot:'#C8B198',hz:'#DDA062',hzY:0.80,sea:'#B98252',
             sun:'#FFF3D6',dark:'#8A7C84',mid:'#D8C6B8',light:'#FFF4E6',rim:'#FFE3B6'},
   hiruma  :{name:'昼',  top:'#1E63B4',bot:'#CFE8F6',sun:'#FFFAE8',dark:'#7E90A6',mid:'#C3D0DE',light:'#F2F7FC',rim:'#FFFFFF'},
   yuyake  :{name:'夕焼け',top:'#6E86A6',bot:'#F7C78C',sun:'#FFD48F',dark:'#575B6E',mid:'#8D8593',light:'#EBC9A0',rim:'#FFE6B4'},
@@ -917,7 +927,7 @@ var drawing=false,lx=0,ly=0;
 function pos(e){var t=e.touches?e.touches[0]:e;return{x:t.clientX,y:t.clientY};}
 function down(e){
   e.preventDefault();wake();sheet.classList.remove('open');closeMenu();
-  var p=pos(e);hideHint();drawing=true;gid++;
+  var p=pos(e);hideHint();drawing=true;gid++;setDrawing(true);
   if(S.tool==='sun'){S.sunX=p.x/W;S.sunY=p.y/H;rebuildSoon();return;}
   lx=p.x;ly=p.y;
   if(S.tool==='hikou')return;   /* wait for a drag direction */
@@ -934,55 +944,58 @@ function move(e){
   var ang=Math.atan2(vy,vx);
   lx=p.x;ly=p.y;addStroke(p.x,p.y,false,ang);
 }
-function up(){drawing=false;}
+/* 描いている間は道具箱を引っ込める。離して少ししてから戻す */
+var dockT=null;
+function setDrawing(on){
+  clearTimeout(dockT);
+  if(on)document.body.classList.add('drawing');
+  else dockT=setTimeout(function(){document.body.classList.remove('drawing');},350);
+}
+function up(){if(drawing)setDrawing(false);drawing=false;}
 cv.addEventListener('touchstart',down,{passive:false});
 cv.addEventListener('touchmove',move,{passive:false});
 cv.addEventListener('touchend',up);
+cv.addEventListener('touchcancel',up);
 cv.addEventListener('mousedown',down);
 window.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
 
 /* ================= UI ================= */
-var ICON={
-  cumulus:'<circle cx="7.5" cy="15" r="4.8"/><circle cx="15.5" cy="15.6" r="4.2"/><circle cx="11.5" cy="10.6" r="5.4"/>',
-  nyudo:'<circle cx="12" cy="5.6" r="3.4"/><circle cx="8.2" cy="9" r="3.2"/><circle cx="15.8" cy="9.2" r="3"/><circle cx="12" cy="12" r="4.4"/><circle cx="8.6" cy="16" r="3.6"/><circle cx="15.2" cy="16.2" r="3.4"/><rect x="6" y="16" width="12" height="4" rx="2"/>',
-  scale:'<g>'+[[5,6],[11,5.4],[17,6.4],[6,11],[12,10.4],[18,11.4],[5.4,16],[11.4,15.6],[17.4,16.6]].map(function(a){return'<circle cx="'+a[0]+'" cy="'+a[1]+'" r="2"/>';}).join('')+'</g>',
-  cirrus:'<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8.5c4-2.2 8 1 12-.8"/><path d="M4 13.4c5-2.5 9 1.4 15-1.1"/><path d="M6 18c4-1.9 7 .8 11-.7"/></g>',
-  haze:'<ellipse cx="12" cy="8.4" rx="8.6" ry="2.2"/><ellipse cx="11" cy="13" rx="10" ry="1.9"/><ellipse cx="13.2" cy="17.2" rx="7" ry="1.6"/>',
-  hikou:'<path d="M20.4 3.6l-5.6 5.9-4.3-1.1-1.8 1.8 3.2 1.9 1.9 3.2 1.8-1.8-1.1-4.3 5.9-5.6z"/><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2.6 2.4"><path d="M9.4 13.6L3 20"/></g>',
-  une:'<rect x="2.6" y="5" width="8.6" height="4" rx="2"/><rect x="12.8" y="5" width="8.6" height="4" rx="2"/><rect x="4" y="11" width="7.4" height="4" rx="2"/><rect x="13" y="11" width="7.4" height="4" rx="2"/><rect x="6" y="17" width="12" height="3.6" rx="1.8"/>',
-  ray:'<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="6" r="3.1" fill="currentColor" stroke="none"/><path d="M12 11v10M7.6 11.6L4.2 21M16.4 11.6L19.8 21"/></g>',
-  sun:'<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4.3" fill="currentColor" stroke="none"/><path d="M12 2.8v2.3M12 18.9v2.3M2.8 12h2.3M18.9 12h2.3M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></g>',
-  erase:'<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M8.5 20h11"/><path d="M4.6 15.2l6.6-6.6a2 2 0 013 0l3.6 3.6a2 2 0 010 3L13 19.6a2 2 0 01-3 0l-5.4-5.4z"/></g>'
-};
 var GROUPS=[
   ['高い空',[['cirrus','筋雲'],['scale','鱗雲'],['haze','霞雲'],['hikou','飛行機雲']]],
   ['低い空',[['cumulus','綿雲'],['nyudo','入道雲'],['une','畝雲']]],
   ['他の道具',[['ray','光'],['sun','太陽'],['erase','消しゴム']]]
 ];
+/* tools.webp に並んでいる順番 */
+var SPRITE=['cirrus','scale','haze','hikou','cumulus','nyudo','une','ray','sun','erase'];
 var toolsEl=document.getElementById('tools'),allTools=[];
-GROUPS.forEach(function(grp){
-  var row=document.createElement('div');row.className='trow';
-  var lab=document.createElement('i');lab.className='rlab';lab.textContent=grp[0].charAt(0);
-  lab.setAttribute('aria-label',grp[0]);lab.title=grp[0];
-  row.appendChild(lab);
+GROUPS.forEach(function(grp,gi){
+  if(gi){var sep=document.createElement('span');sep.className='tsep';sep.setAttribute('aria-hidden','true');toolsEl.appendChild(sep);}
   grp[1].forEach(function(t){
     var b=document.createElement('button');
     b.className='tool';b.type='button';b.dataset.t=t[0];
     b.setAttribute('aria-pressed',String(t[0]===S.tool));
-    b.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor">'+ICON[t[0]]+'</svg><small>'+t[1]+'</small>';
+    b.title=grp[0]+' — '+t[1];
+    var ic=document.createElement('i');ic.setAttribute('aria-hidden','true');
+    ic.style.backgroundPosition=(SPRITE.indexOf(t[0])/(SPRITE.length-1)*100)+'% 0';
+    var lb=document.createElement('small');lb.textContent=t[1];
+    b.appendChild(ic);b.appendChild(lb);
     b.addEventListener('click',function(){
       S.tool=t[0];wake();hideHint();
       allTools.forEach(function(c){c.setAttribute('aria-pressed',String(c.dataset.t===S.tool));});
     });
-    allTools.push(b);row.appendChild(b);
+    allTools.push(b);toolsEl.appendChild(b);
   });
-  toolsEl.appendChild(row);
 });
 document.getElementById('size').addEventListener('input',function(e){S.size=e.target.value/100;wake();});
 
 /* the sun becomes the moon once the sky is dark enough */
+/* 雲海の色を空に合わせる (絵は夕方の金色なので、夜は暗く、昼は白っぽく) */
+var SEAFX={hiruma:'saturate(.55) brightness(1.08) hue-rotate(-8deg)',yoru:'brightness(.28) saturate(.6) hue-rotate(185deg)',
+  tasogare:'brightness(.7) saturate(1.1) hue-rotate(-12deg)',asayake:'saturate(.9) hue-rotate(-10deg)'};
+function updateSea(){document.getElementById('sea').style.filter=SEAFX[S.theme]||(isNight()?SEAFX.yoru:'none');}
 function updateCelestial(){
+  updateSea();
   var n=isNight(),w=n?'月':'太陽';
   for(var i=0;i<allTools.length;i++)
     if(allTools[i].dataset.t==='sun')allTools[i].querySelector('small').textContent=w;
@@ -1066,8 +1079,26 @@ clearBtn.addEventListener('click',function(){
   strokes=[];rebuild();closeMenu();
 });
 var veil=document.getElementById('veil'),veilImg=document.getElementById('veilImg');
+/* 保存する絵には雲海も入れる (雲海はキャンバスの外の画像なので、同じ位置・同じ溶かし方で重ねる) */
+function snapshot(){
+  var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;var g=c.getContext('2d');
+  g.drawImage(cv,0,0);
+  var se=document.getElementById('sea'),r=se.getBoundingClientRect(),k=cv.width/W;
+  if(se.complete&&se.naturalWidth){
+    var t=document.createElement('canvas');t.width=Math.round(r.width*k);t.height=Math.round(r.height*k);var tg=t.getContext('2d');
+    /* object-fit: cover と同じ切り方 */
+    var sc=Math.max(t.width/se.naturalWidth,t.height/se.naturalHeight),dw=se.naturalWidth*sc,dh=se.naturalHeight*sc;
+    tg.filter=se.style.filter||'none';
+    tg.drawImage(se,(t.width-dw)/2,t.height-dh,dw,dh);tg.filter='none';
+    tg.globalCompositeOperation='destination-in';
+    var mg=tg.createLinearGradient(0,0,0,t.height);mg.addColorStop(0,'rgba(0,0,0,0)');mg.addColorStop(0.16,'#000');
+    tg.fillStyle=mg;tg.fillRect(0,0,t.width,t.height);
+    g.drawImage(t,Math.round(r.left*k),Math.round(r.top*k));
+  }
+  return c.toDataURL('image/png');
+}
 document.getElementById('saveBtn').addEventListener('click',function(){
-  closeMenu();veilImg.src=cv.toDataURL('image/png');veil.classList.add('open');
+  closeMenu();veilImg.src=snapshot();veil.classList.add('open');
 });
 document.getElementById('veilClose').addEventListener('click',function(){veil.classList.remove('open');veilImg.src='';});
 
