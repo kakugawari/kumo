@@ -343,7 +343,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v14';   /* sw.js の CACHE と揃える */
+var VER='v15';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -954,7 +954,12 @@ window.addEventListener('resize',resize);
 
 /* ================= input ================= */
 var drawing=false,lx=0,ly=0;
-function pos(e){var t=e.touches?e.touches[0]:e;return{x:t.clientX,y:t.clientY};}
+/* 指の位置は、キャンバスの実際の置き場所から数える。画面の左上にぴったり置かれている前提で
+   clientX/Y をそのまま使うと、キャンバスが下にずれて置かれた分だけ雲が指より下にできる */
+function pos(e){
+  var t=e.touches?e.touches[0]:e,r=cv.getBoundingClientRect();
+  return{x:(t.clientX-r.left)*(W/(r.width||W)),y:(t.clientY-r.top)*(H/(r.height||H))};
+}
 function down(e){
   e.preventDefault();wake();sheet.classList.remove('open');closeMenu();
   var p=pos(e);hideHint();drawing=true;gid++;setDrawing(true);
@@ -1125,7 +1130,7 @@ vhProbe.style.cssText='position:absolute;top:0;width:0;height:100vh;visibility:h
 document.body.appendChild(vhProbe);
 function showVer(){
   document.getElementById('ver').textContent=
-    VER+' · 描ける'+H+' / 窓'+window.innerHeight+' / vh'+Math.round(vhProbe.getBoundingClientRect().height);
+    VER+' · 描ける'+H+' / 窓'+window.innerHeight+' / vh'+Math.round(vhProbe.getBoundingClientRect().height)+' / 上端'+Math.round(cv.getBoundingClientRect().top);
 }
 function closeMenu(){menu.classList.remove('open');logo.setAttribute('aria-expanded','false');resetClear();}
 logo.addEventListener('click',function(e){

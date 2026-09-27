@@ -83,6 +83,27 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('雲の上の空で、太陽が月にならない', sky.sunLabel === '太陽', sky.sunLabel);
   check('太陽の照りを毎コマ塗らない (空の下地に焼き付け)', sky.per <= 1, 'radialGradient/コマ=' + sky.per);
 
+  // --- タップした所に雲ができる (キャンバスが画面の上端からずれて置かれていても) ---
+  const tp = await p.evaluate(async () => {
+    const cv = document.getElementById('cv'), A = window.__app, out = [];
+    const w = document.getElementById('windR'); w.value = 0; w.dispatchEvent(new Event('input'));
+    for (const shift of [0, 40]) {
+      document.body.style.paddingTop = '0'; cv.style.top = shift + 'px'; cv.style.height = (932 - shift) + 'px';
+      window.dispatchEvent(new Event('resize')); await new Promise(r => requestAnimationFrame(r));
+      document.querySelector('[data-t=cumulus]').click();
+      const x = 215, y = 400, t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent('touchstart', { touches: [t], changedTouches: [t], bubbles: true, cancelable: true }));
+      cv.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t], bubbles: true, cancelable: true }));
+      const s = A.strokes()[A.strokes().length - 1], r = cv.getBoundingClientRect();
+      // 雲の中心 (キャンバスの中の位置) を、画面の位置に戻して、指との差を見る
+      out.push(Math.round(r.top + s.y - y));
+    }
+    cv.style.top = ''; cv.style.height = ''; window.dispatchEvent(new Event('resize'));
+    document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
+    return out;
+  });
+  check('タップした所に雲ができる (キャンバスが 40px 下に置かれていても)', tp.every(v => Math.abs(v) <= 1), '指との縦のずれ=' + JSON.stringify(tp));
+
   // --- 雲の形と細かさ ---
   const cl = await p.evaluate(async () => {
     const cv = document.getElementById('cv'), A = window.__app;
@@ -227,7 +248,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   });
   check('キャンバスが 932 いっぱい', g.cv === 932, 'cv=' + g.cv);
   check('操作盤の下端がキャンバスの下端', Math.abs(g.dock - g.cv) < 1, 'dock=' + g.dock);
-  check('診断が 描ける932 / 窓932 / vh932', /描ける932 \/ 窓932 \/ vh932/.test(g.ver), g.ver);
+  check('診断が 描ける932 / 窓932 / vh932 / 上端0', /描ける932 \/ 窓932 \/ vh932 \/ 上端0/.test(g.ver), g.ver);
 
   // 4. 版の番号が sw.js の CACHE と同じ (上げ忘れると端末に届かない)
   const ver = (g.ver.match(/^v\d+/) || [''])[0];
