@@ -239,15 +239,17 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     const raf = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     const w = document.getElementById('windR'); w.value = 0; w.dispatchEvent(new Event('input'));
     S.sunX = 0.5; S.sunY = 100 / 932; A.rebuild(); await raf();
-    // 光の筋の重心を、太陽から見た位置で測る (太陽を動かしても、筋が同じ形のままついてくるか)
-    function rayCentroid() { const c = A.rays(), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data, k = c.width / 430;
-      let sx = 0, sy = 0, n = 0; for (let y = 0; y < c.height; y += 4) for (let x = 0; x < c.width; x += 4) { const a = d[(y * c.width + x) * 4 + 3]; sx += x * a; sy += y * a; n += a; }
-      return [sx / n / k - S.sunX * 430, sy / n / k - S.sunY * 932]; }
-    // 筋が画面の外まで伸びると、切れ方で重心が動くので、画面に収まる短い筋で測る
+    // 筋の先は画面に留まり、太陽を動かすと先を軸に振れる。太陽から先へ半分進んだ所 (筋の芯) の濃さを、
+    // 動かす前と後で比べる。太陽についていく作りなら、動かした後のその点は筋から外れて暗くなる
+    function alphaAt(x, y) { const c = A.rays(), k = c.width / 430, d = c.getContext('2d').getImageData(Math.round(x * k) - 2, Math.round(y * k) - 2, 5, 5).data;
+      let s = 0; for (let i = 3; i < d.length; i += 4) s += d[i]; return s / 25; }
+    // 筋が画面に収まる短い筋で測る (太陽 (215,100) から (190,180) を通り、先は (147,316))
     document.querySelector('[data-t=ray]').click(); T('touchstart', 190, 180); T('touchend', 0, 0);
-    const c0 = rayCentroid();
+    const st = A.strokes()[A.strokes().length - 1], fx = st.fx, fy = st.fy;
+    const at = () => { const sx = S.sunX * 430, sy = S.sunY * 932; return alphaAt(sx + (fx - sx) * 0.5, sy + (fy - sy) * 0.5); };
+    const c0 = at();
     S.sunX = 0.8; S.sunY = 160 / 932; A.rebuild(); await raf();
-    const c1 = rayCentroid();
+    const c1 = at();
     document.getElementById('undoBtn').click();
     // 太陽 (215,100) と、なぞった光のあいだの左側にだけ綿雲を置く。雲の先 (陰) と、左右で対になる所 (日なた) の光を比べる
     S.sunX = 0.5; S.sunY = 100 / 932; A.rebuild();
@@ -260,10 +262,9 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     const shade = box(80, 470), sun = box(350, 470);
     document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
     S.sunX = 0.80; S.sunY = 0.15; A.rebuild();
-    return { move: Math.round(Math.hypot(c1[0] - c0[0], c1[1] - c0[1])), shade: Math.round(shade), sun: Math.round(sun) };
+    return { a0: Math.round(c0), a1: Math.round(c1), shade: Math.round(shade), sun: Math.round(sun) };
   });
-  // 前の作りでは、置いた点を軸に筋が回った (太陽を 135pt 動かすと、重心が 100pt 以上ずれる)
-  check('光の筋は太陽についていく (太陽から見た筋の重心のずれ 3pt 以下)', ry.move <= 3, 'ずれ=' + ry.move + 'pt');
+  check('光の筋の先は画面に留まり、太陽を動かすと先を軸に振れる (筋の芯の濃さが 8 割以上残る)', ry.a0 > 10 && ry.a1 >= ry.a0 * 0.8, ry.a0 + '→' + ry.a1);
   check('雲の陰には光が差さない (雲の先 ÷ 日なた 0.5 未満)', ry.sun > 10 && ry.shade / ry.sun < 0.5, '陰' + ry.shade + ' / 日なた' + ry.sun);
 
   // --- 道具箱・雲海 ---

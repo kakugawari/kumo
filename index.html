@@ -369,7 +369,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v19';   /* sw.js の CACHE と揃える */
+var VER='v20';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -789,18 +789,18 @@ function eraseAt(g,cx,cy,R,wrap){
   }
   g.restore();
 }
-/* 消しゴムは雲と光の筋の両方を消す。雲は風で流れ、光の筋は太陽についていくので、
-   それぞれの座標で消す (光の筋のほうは、消した所を太陽からの位置で覚えておく) */
+/* 消しゴムは雲と光の筋の両方を消す。雲は風で流れ、光の筋は画面に止まっているので、
+   それぞれの座標で消す */
 function stampErase(s){
   eraseAt(cloud.x,s.x,s.y,s.R,true);
-  var sp=sunPos();
-  eraseAt(rays.x,sp.x+s.rdx,sp.y+s.rdy,s.R,false);
+  eraseAt(rays.x,s.rx,s.y,s.R,false);
 }
-/* 光の筋は、置いたときの「太陽から見た向きと長さ」を覚えておき、いつも今の太陽から差す。
-   (前は置いた点を覚えていたので、太陽を動かすと筋がその点を軸に回ってしまった) */
+/* 光の筋は、太陽と反対側の端 (筋の先、s.fx,s.fy) を画面に留めておき、いつも今の太陽からそこへ差す。
+   太陽を動かすと、筋は先を軸に反対へ振れる (懐中電灯で照らした所が動かないのと同じ)。
+   前は置いた点を軸にしていたので、太陽を動かすと筋の途中を軸に回った */
 function stampRay(s){
-  var sp=sunPos(),vx=s.dx,vy=s.dy,L=Math.max(70,Math.hypot(vx,vy));
-  var a=Math.atan2(vy,vx),far=L*2.7,Wd=s.R*0.55,g=rays.x;
+  var sp=sunPos(),vx=s.fx-sp.x,vy=s.fy-sp.y,far=Math.max(70*2.7,Math.hypot(vx,vy));
+  var a=Math.atan2(vy,vx),Wd=s.R*0.55,g=rays.x;
   g.save();g.translate(sp.x,sp.y);g.rotate(a);g.globalCompositeOperation='lighter';
   for(var i=0;i<6;i++){
     var w=Wd*(0.20+i*0.30),al=0.075*(1-i/7);
@@ -1062,8 +1062,10 @@ var CLOUDS={cumulus:1,nyudo:1,une:1,scale:1,haze:1,cirrus:1,hikou:1};
 function addStroke(x,y,tap,ang){
   var t=S.tool,R=baseR()*(SZ[t]||1);
   var s={t:t,x:t==='ray'?x:layerX(x),y:y,R:R,seed:(Math.random()*1e6)|0,a:ang||0,g:gid},sp=sunPos();
-  if(t==='erase'){s.rdx=x-sp.x;s.rdy=y-sp.y;}
-  if(t==='ray'){s.dx=x-sp.x;s.dy=y-sp.y;}
+  if(t==='erase')s.rx=x;
+  if(t==='ray'){   /* 筋の長さは、太陽から置いた点までの 2.7 倍 (前と同じ)。その先の端を覚える */
+    var vx=x-sp.x,vy=y-sp.y,L=Math.hypot(vx,vy)||1,f=Math.max(70,L)*2.7/L;
+    s.fx=sp.x+vx*f;s.fy=sp.y+vy*f;}
   if(t==='ray'||t==='erase')raysDirty=true;
   strokes.push(s);
   if(t==='ray'){stampRay(s);return;}
