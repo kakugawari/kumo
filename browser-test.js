@@ -257,6 +257,8 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('保存する絵に雲海も入る', sv > 30, '下端の差=' + sv);
   // 空の色や足もとを選んだ直後は、シートを薄くして裏を見せ、少しして戻す
   const pk = await p.evaluate(async () => { const sh = document.getElementById('sheet'); sh.classList.add('open');
+    // 直前に空の色を選んだ名残で薄いままのことがあるので、元の濃さに戻るまで待ってから選ぶ
+    while (sh.classList.contains('peek') || +getComputedStyle(sh).opacity < 0.99) await new Promise(r => setTimeout(r, 100));
     document.querySelector('.gchip[data-g=mount]').click(); await new Promise(r => setTimeout(r, 400)); const during = +getComputedStyle(sh).opacity;
     await new Promise(r => setTimeout(r, 1500)); const after = +getComputedStyle(sh).opacity;
     document.querySelector('.gchip[data-g=none]').click(); await new Promise(r => setTimeout(r, 1500)); sh.classList.remove('open'); return [during, after]; });
