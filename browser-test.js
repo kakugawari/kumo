@@ -24,6 +24,39 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(url); await p.waitForTimeout(500);
 
+  // --- タイトル ---
+  const t = await p.evaluate(async () => {
+    const img = document.querySelector('#title img'); await img.decode();
+    const r = img.getBoundingClientRect();
+    // 絵の画素を読み、見えないボタンの真ん中が「絵に描いたボタン」(まわりの空より暗い) の上にあるか
+    const c = document.createElement('canvas'); c.width = r.width; c.height = r.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, r.width, r.height);
+    const L = (x, y) => { const d = g.getImageData(Math.round(x), Math.round(y), 1, 1).data; return d[0] * .3 + d[1] * .59 + d[2] * .11; };
+    const btns = ['tStart', 'tHow', 'tSet'].map(id => { const b = document.getElementById(id).getBoundingClientRect();
+      const cy = b.top + b.height / 2, sky = (L(8, cy) + L(r.width - 8, cy)) / 2;
+      // 真ん中は字や絵が載るので、左右の端から 1/6 入った所を見る
+      return [b.left + b.width / 6, b.right - b.width / 6].map(x => Math.round(sky - L(x, cy))); });
+    return { shown: getComputedStyle(document.getElementById('title')).display !== 'none',
+      ratio: (img.naturalWidth / img.naturalHeight) / (r.width / r.height), btns };
+  });
+  check('開くとタイトルが出る', t.shown);
+  check('タイトルの絵が縦横比を保って敷かれる (差 1% 未満)', Math.abs(t.ratio - 1) < 0.01, t.ratio.toFixed(4));
+  check('見えないボタンが、絵に描いたボタンの上にある', t.btns.every(b => b.every(v => v > 20)), JSON.stringify(t.btns));
+  // タイトルの上から空に触れても、雲は置かれない (指はタイトルが受け止める)
+  await p.touchscreen.tap(215, 300); await p.waitForTimeout(100);
+  const n0 = await p.evaluate(() => window.__app.strokes().length);
+  check('タイトルの間は、空に触れても雲が置かれない', n0 === 0, 'n=' + n0);
+  await p.tap('#tSet'); await p.tap('#setSound');
+  const snd = await p.evaluate(() => [document.getElementById('setSound').textContent, document.getElementById('soundState').textContent]);
+  check('設定の環境音と、メニューの表示がそろう', snd[0] === '入' && snd[1] === '環境音 — 入', JSON.stringify(snd));
+  await p.tap('#setSound'); await p.tap('#setClose');
+  await p.tap('#tStart'); await p.waitForTimeout(900);
+  await p.touchscreen.tap(215, 300); await p.waitForTimeout(100);
+  const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
+  check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
+  const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+  check('タイトルの絵を、オフライン用に先読みする', /'\.\/title\.jpg'/.test(sw));
+
   // 1. 全画面のものが fixed で置かれていない (fixed だと iOS の短い枠に合わせて下が空く)
   const fixed = await p.evaluate(() => [...document.querySelectorAll('body *')]
     .filter(e => getComputedStyle(e).position === 'fixed').map(e => e.id || e.className));

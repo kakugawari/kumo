@@ -173,6 +173,29 @@
   .veil.open{display:flex;}
   .veil img{max-width:100%;max-height:70vh;border-radius:8px;box-shadow:0 12px 50px rgba(0,0,0,.6);}
   .veil p{font-size:12px;opacity:.7;margin:0;}
+  /* タイトル。絵 (852x1846) は画面 (430x932) とほぼ同じ縦横比なので、切らずに敷く。
+     ボタンは絵に描いてあるので、その上に見えない本物のボタンを重ねる (位置は絵の画素から測った) */
+  .title{position:absolute;inset:0;z-index:35;background:#8E9DB4;transition:opacity .7s ease;}
+  .title.gone{opacity:0;pointer-events:none;}
+  .title > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+  .tbtn{position:absolute;border:0;padding:0;background:transparent;border-radius:999px;
+    backdrop-filter:none;-webkit-backdrop-filter:none;color:transparent;font-size:1px;}
+  .tbtn:active{transform:none;background:rgba(40,24,8,.14);}
+  #tStart{left:21.13%;top:73.67%;width:57.51%;height:6.93%;}
+  #tHow{left:19.95%;top:82.77%;width:29.34%;height:4.55%;}
+  #tSet{left:53.52%;top:82.88%;width:26.53%;height:4.44%;}
+  .card{
+    position:absolute;left:22px;right:22px;top:50%;transform:translateY(-50%);z-index:36;
+    background:var(--panel-solid);border:1px solid var(--line);border-radius:24px;
+    backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+    padding:22px 22px 16px;display:none;box-shadow:0 14px 40px rgba(0,0,0,.35);
+  }
+  .card.open{display:block;}
+  .card h2{font-family:"Hiragino Mincho ProN","Yu Mincho",serif;font-weight:400;font-size:17px;letter-spacing:.2em;margin:0 0 12px;}
+  .card ul{margin:0;padding:0 0 0 1.1em;font-size:13px;line-height:1.85;opacity:.88;}
+  .card li + li{margin-top:4px;}
+  .card .row{margin-top:4px;}
+  .card .close{margin:16px auto 0;}
   /* 縦で使うアプリ。iOS はマニフェストの縦固定を無視するので、横にされたら幕を出す */
   .turn{
     position:absolute;inset:0;z-index:40;display:none;
@@ -247,6 +270,30 @@
   <p class="hintline">「太陽」(夜は「月」)を選んで空をなぞると光源が動き、雲の陰影も付け直されます。</p>
 </div>
 
+<div class="title" id="title">
+  <img src="title.jpg" alt="くもスケッチ — 空に触れて、雲を置く" decoding="async">
+  <button class="tbtn" id="tStart" aria-label="はじめる">はじめる</button>
+  <button class="tbtn" id="tHow" aria-label="あそびかた">あそびかた</button>
+  <button class="tbtn" id="tSet" aria-label="設定">設定</button>
+</div>
+<div class="card" id="howCard" role="dialog" aria-label="あそびかた">
+  <h2>あそびかた</h2>
+  <ul>
+    <li>下の道具で雲を選び、空に触れる・なぞると雲が置けます。上の段は高い空、中の段は低い空の雲</li>
+    <li>「太陽」を選んで空をなぞると太陽が動き、雲の陰影が付け直されます</li>
+    <li>「光」は太陽から差す光の筋、「消しゴム」は雲と光を消します</li>
+    <li>左下の太陽のボタンで空の色と風、↶ でひとなぞり戻せます</li>
+    <li>左上の名前から、音・保存・リセット</li>
+    <li>窓の外の空を見ながら、写してみてください</li>
+  </ul>
+  <button class="close" id="howClose">閉じる</button>
+</div>
+<div class="card" id="setCard" role="dialog" aria-label="設定">
+  <h2>設定</h2>
+  <div class="row wide"><span>環境音</span><button class="mini" id="setSound" aria-pressed="false">切</button></div>
+  <button class="close" id="setClose">閉じる</button>
+</div>
+
 <div class="turn" id="turn" aria-live="polite">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <rect x="7" y="2.5" width="10" height="19" rx="2.4"/><path d="M10.5 18.5h3"/>
@@ -263,7 +310,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v7';   /* sw.js の CACHE と揃える */
+var VER='v8';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -974,12 +1021,29 @@ function startSound(){
   out.gain.linearRampToValueAtTime(0.16,AC.currentTime+3.5);
   soundOn=true;
 }
-document.getElementById('soundBtn').addEventListener('click',function(){
-  var st=document.getElementById('soundState');
-  if(!AC){startSound();st.textContent='環境音 — 入';return;}
-  if(soundOn){AC.suspend();soundOn=false;st.textContent='環境音 — 切';}
-  else{AC.resume();soundOn=true;st.textContent='環境音 — 入';}
+/* 音の入切は、メニューとタイトルの設定の両方から。表示は両方そろえる */
+function toggleSound(){
+  if(!AC)startSound();
+  else if(soundOn){AC.suspend();soundOn=false;}
+  else{AC.resume();soundOn=true;}
+  document.getElementById('soundState').textContent='環境音 — '+(soundOn?'入':'切');
+  var b=document.getElementById('setSound');b.textContent=soundOn?'入':'切';b.setAttribute('aria-pressed',String(soundOn));
+}
+document.getElementById('soundBtn').addEventListener('click',toggleSound);
+
+/* ================= title ================= */
+var titleEl=document.getElementById('title'),howCard=document.getElementById('howCard'),setCard=document.getElementById('setCard');
+function closeCards(){howCard.classList.remove('open');setCard.classList.remove('open');}
+document.getElementById('tStart').addEventListener('click',function(){
+  closeCards();titleEl.classList.add('gone');wake();
+  setTimeout(function(){titleEl.style.display='none';},750);
 });
+document.getElementById('tHow').addEventListener('click',function(){closeCards();howCard.classList.add('open');});
+document.getElementById('tSet').addEventListener('click',function(){closeCards();setCard.classList.add('open');});
+document.getElementById('howClose').addEventListener('click',closeCards);
+document.getElementById('setClose').addEventListener('click',closeCards);
+document.getElementById('setSound').addEventListener('click',toggleSound);
+titleEl.querySelector('img').addEventListener('click',closeCards);
 
 buildNoise();buildGrain();resize();requestAnimationFrame(loop);
 
