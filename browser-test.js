@@ -54,7 +54,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
   check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'tools.webp', 'sea.jpg'].every(f => sw.includes("'./" + f + "'")));
+  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'tools.webp', 'sea-gold.jpg', 'sea-day.jpg', 'sea-night.jpg'].every(f => sw.includes("'./" + f + "'")));
 
   // --- プレイ画面の空は、タイトルの空と同じ世界 (雲の上) ---
   const sky = await p.evaluate(async () => {
@@ -99,6 +99,18 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('道具の絵の四隅が透明 (市松模様が残っていない)', dk.cornerMax === 0, 'alpha最大=' + dk.cornerMax);
   check('道具箱が低い (空を広く見せる)', dk.dockH <= 150, dk.dockH + 'px');
   check('雲海が画面の下に敷かれ、指を通す', dk.seaOk && dk.seaPE === 'none' && dk.seaBottom === 932, JSON.stringify(dk));
+  // 雲海は空に合わせて絵を替える。金の絵の空の部分はマゼンタだったので、残っていないこと
+  const seaSw = await p.evaluate(async () => {
+    const pick = k => { document.querySelector('.preset[data-k=' + k + ']').click(); return document.getElementById('sea').getAttribute('src'); };
+    const r = { hiruma: pick('hiruma'), yoru: pick('yoru'), kumoue: pick('kumoue') };
+    let mg = 0;
+    for (const f of ['sea-gold.jpg', 'sea-day.jpg', 'sea-night.jpg']) { const im = new Image(); im.src = f; await im.decode();
+      const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data; for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 2] > 180 && d[i + 1] < 120) mg++; }
+    r.magenta = mg; return r;
+  });
+  check('雲海の絵が空に合わせて替わる (昼・夜・雲の上)', seaSw.hiruma === 'sea-day.jpg' && seaSw.yoru === 'sea-night.jpg' && seaSw.kumoue === 'sea-gold.jpg', JSON.stringify(seaSw));
+  check('雲海の絵にマゼンタが残っていない', seaSw.magenta === 0, 'px=' + seaSw.magenta);
   // 描いている間は道具箱が引っ込み、離すと戻る (途中で指が取り消されても戻る)
   const dr = await p.evaluate(async () => {
     const cv = document.getElementById('cv');

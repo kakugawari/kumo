@@ -1,5 +1,5 @@
 /* くもスケッチ - service worker */
-const CACHE = 'kumo-sketch-v11';
+const CACHE = 'kumo-sketch-v12';
 const ASSETS = [
   './',
   './index.html',
@@ -12,7 +12,9 @@ const ASSETS = [
   './title-bg.jpg',
   './title-logo.png',
   './tools.webp',
-  './sea.jpg'
+  './sea-gold.jpg',
+  './sea-day.jpg',
+  './sea-night.jpg'
 ];
 
 self.addEventListener('install', e => {

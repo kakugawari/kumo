@@ -33,7 +33,7 @@
   }
   canvas#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 
-  /* 足もとの雲海 (sea.jpg)。雲より手前なので、キャンバスの上に重ねる。指はキャンバスへ通す。
+  /* 足もとの雲海 (sea-gold / sea-day / sea-night.jpg、空の色で切り替える)。雲より手前なので、キャンバスの上に重ねる。指はキャンバスへ通す。
      上のふちは空に溶かす。高さ 200px を画面の下に敷き、はみ出す左右は切る */
   .sea{position:absolute;left:0;right:0;bottom:0;width:100%;height:200px;object-fit:cover;object-position:50% 100%;
     z-index:1;pointer-events:none;
@@ -232,7 +232,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<img class="sea" id="sea" src="sea.jpg" alt="">
+<img class="sea" id="sea" src="sea-gold.jpg" alt="">
 
 <div class="top ui">
   <button id="logo" class="logo" aria-expanded="false" aria-controls="menu">
@@ -335,7 +335,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v11';   /* sw.js の CACHE と揃える */
+var VER='v12';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -990,10 +990,14 @@ GROUPS.forEach(function(grp,gi){
 document.getElementById('size').addEventListener('input',function(e){S.size=e.target.value/100;wake();});
 
 /* the sun becomes the moon once the sky is dark enough */
-/* 雲海の色を空に合わせる (絵は夕方の金色なので、夜は暗く、昼は白っぽく) */
-var SEAFX={hiruma:'saturate(.55) brightness(1.08) hue-rotate(-8deg)',yoru:'brightness(.28) saturate(.6) hue-rotate(185deg)',
-  tasogare:'brightness(.7) saturate(1.1) hue-rotate(-12deg)',asayake:'saturate(.9) hue-rotate(-10deg)'};
-function updateSea(){document.getElementById('sea').style.filter=SEAFX[S.theme]||(isNight()?SEAFX.yoru:'none');}
+/* 雲海は空に合わせて絵を替える (金・昼・夜の3枚)。朝焼けと黄昏は金の絵の色を少し寄せる */
+var SEA={kumoue:['gold',''],yuyake:['gold',''],asayake:['gold','saturate(.9) hue-rotate(-10deg)'],
+  tasogare:['gold','brightness(.72) saturate(1.1) hue-rotate(-12deg)'],hiruma:['day',''],yoru:['night','']};
+function updateSea(){
+  var e=document.getElementById('sea'),v=isNight()?['night','']:(SEA[S.theme]||['gold','']),f='sea-'+v[0]+'.jpg';
+  if(e.getAttribute('src')!==f)e.setAttribute('src',f);
+  e.style.filter=v[1]||'none';
+}
 function updateCelestial(){
   updateSea();
   var n=isNight(),w=n?'月':'太陽';
