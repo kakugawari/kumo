@@ -1,5 +1,5 @@
 /* くもスケッチ - service worker */
-const CACHE = 'kumo-sketch-v20';
+const CACHE = 'kumo-sketch-v21';
 const ASSETS = [
   './',
   './index.html',
@@ -11,7 +11,7 @@ const ASSETS = [
   './favicon-32.png',
   './title-bg.jpg',
   './title-logo.png',
-  './tools.webp',
+  './dock.webp',
   './sea-gold.jpg',
   './sea-day.jpg',
   './sea-night.jpg'

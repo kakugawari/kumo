@@ -56,7 +56,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
   check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'tools.webp', 'sea-gold.jpg', 'sea-day.jpg', 'sea-night.jpg'].every(f => sw.includes("'./" + f + "'")));
+  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'dock.webp', 'sea-gold.jpg', 'sea-day.jpg', 'sea-night.jpg'].every(f => sw.includes("'./" + f + "'")));
 
   // --- プレイ画面の空は、タイトルの空と同じ世界 (雲の上) ---
   const sky = await p.evaluate(async () => {
@@ -270,8 +270,8 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   // --- 道具箱・雲海 ---
   const dk = await p.evaluate(async () => {
     const tools = [...document.querySelectorAll('.tool')];
-    const pos = tools.map(t => t.querySelector('i').style.backgroundPosition);
-    const im = new Image(); im.src = 'tools.webp'; await im.decode();
+    const pos = [...document.querySelectorAll('.dock .ic')].map(i => i.style.backgroundPosition);
+    const im = new Image(); im.src = 'dock.webp'; await im.decode();
     // 絵の中の各アイコンの四隅が透明か (市松模様が残っていないか)
     const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
     const Z = im.naturalHeight, n = im.naturalWidth / Z, corners = [];
@@ -296,7 +296,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   });
   check('道具10個が、横に送らなくても全部見えている', vis.hidden.length === 0 && vis.over <= 0, JSON.stringify(vis.hidden) + ' はみ出し=' + vis.over);
   check('押すボタンは 44pt 以上', vis.small.length === 0, JSON.stringify(vis.small));
-  check('道具10個が、それぞれ別の絵を使う', dk.n === 10 && dk.uniq === 10 && dk.cells === 10, dk.n + '個 / 絵' + dk.uniq + '種');
+  check('道具10個と空の色・戻すが、それぞれ別の絵を使う (dock.webp は見本から切り抜いた13個)', dk.n === 10 && dk.uniq === 12 && dk.cells === 13, dk.n + '個 / 絵' + dk.uniq + '種 / 絵の数' + dk.cells);
   check('道具の絵の四隅が透明 (市松模様が残っていない)', dk.cornerMax === 0, 'alpha最大=' + dk.cornerMax);
   check('道具箱が低い (空を広く見せる。3段だった頃は 233px)', dk.dockH <= 165, dk.dockH + 'px');
   check('はじめの足もとは「なし」(雲海もシルエットも出さない)', dk.seaDefault === 'none' && dk.groundDefault === 'none', dk.seaDefault + '/' + dk.groundDefault);

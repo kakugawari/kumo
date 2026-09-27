@@ -94,66 +94,58 @@
   .ver{font-size:10px;opacity:.38;letter-spacing:.04em;padding:4px 13px 5px;}
   .sep{height:1px;background:rgba(255,255,255,.1);margin:5px 12px;}
 
+  /* 道具箱はもらった見本 (すりガラスの2段) に合わせる。アイコンはその見本から切り抜いた白い影絵 (dock.webp)。
+     上の段: 空の色・戻す | 光 | 太陽 | 消しゴム | 大きさ。下の段: 雲7種を1枚ずつの札に。
+     10個を1列に並べて横に送る作りにしたら、右の4つが画面の外に隠れて見つからなかった。
+     どちらの段も、送らずに全部見える幅に収める */
   .dock{
     position:absolute;left:0;right:0;bottom:0;z-index:5;
-    padding:8px 10px calc(env(safe-area-inset-bottom) + 10px);
-    display:flex;flex-direction:column;gap:8px;align-items:center;
+    padding:4px 8px calc(env(safe-area-inset-bottom) + 8px);
+    transition:transform .28s cubic-bezier(.3,.8,.3,1),opacity .28s;
   }
-  /* 上の段: 空の色・戻す・光・太陽・消しゴム・大きさ。下の段: 雲7種。
-     10個を1列に並べて横に送る作りにしたら、右の4つ (畝雲・光・太陽・消しゴム) が画面の外に隠れて
-     見つからなかった。どちらの段も、送らずに全部見える幅に収める */
-  .controls{display:flex;align-items:stretch;gap:5px;width:100%;}
-  .iconbtn{
-    flex:0 0 auto;width:46px;min-height:50px;justify-content:center;padding:4px 0 3px;border-radius:15px;
-    flex-direction:column;gap:2px;
-  }
-  .iconbtn svg{width:22px;height:22px;opacity:.85;}
-  .iconbtn small,.tools2 .tool small{font-size:9.5px;letter-spacing:0;opacity:.8;white-space:nowrap;}
-  .tools2{display:flex;gap:5px;flex:0 0 auto;}
-  .tools2 .tool{width:46px;min-height:50px;padding:4px 0 3px;border-radius:15px;
-    background:var(--panel);border:1px solid var(--line);
-    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
-  .tools2 .tool i{width:26px;height:26px;}
-  .sizewrap{
-    flex:1;min-width:0;padding-left:10px!important;padding-right:10px!important;background:var(--panel);border:1px solid var(--line);
-    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-    border-radius:15px;padding:5px 14px;display:flex;align-items:center;gap:10px;
-  }
-  .sizewrap input{min-width:0;width:100%;}   /* 枠が狭くても、つまみの線がはみ出さない */
-  .sizewrap span{font-size:10.5px;opacity:.6;letter-spacing:.12em;}
-  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:22px;background:transparent;}
-  input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(255,255,255,.3);border-radius:2px;}
-  input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
-    background:#fff;margin-top:-8px;box-shadow:0 1px 8px rgba(0,0,0,.4);
-  }
-  input[type=range]::-moz-range-track{height:2px;background:rgba(255,255,255,.3);border-radius:2px;}
-  input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:#fff;}
-
-  /* 道具は1列。絵 (tools.webp、10個を横に並べた1枚) を背景として切り出して使う。
-     はみ出したぶんは横に送る。描いている間は下へ引っ込めて、空を広く見せる */
-  .tools{
-    display:flex;align-items:center;justify-content:center;gap:1px;width:100%;
-    background:var(--panel);border:1px solid var(--line);
-    backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
-    border-radius:22px;padding:6px 8px;overflow-x:auto;scrollbar-width:none;
-    scroll-snap-type:x proximity;
-
-  }
-  .tools::-webkit-scrollbar{display:none;}
-  .tsep{flex:0 0 1px;align-self:stretch;margin:10px 3px;background:rgba(255,255,255,.16);}
-  .tool{
-    flex:0 0 auto;border:0;background:transparent;border-radius:16px;scroll-snap-align:center;
-    padding:5px 2px 4px;flex-direction:column;gap:1px;width:54px;
-  }
-  .tool i{display:block;width:44px;height:44px;background:url(tools.webp) no-repeat;background-size:1000% 100%;
-    filter:drop-shadow(0 2px 4px rgba(0,0,0,.18));transition:transform .18s;}
-  .tool small{font-size:10px;letter-spacing:.02em;opacity:.82;white-space:nowrap;}
-  .tool[aria-pressed=true]{background:rgba(255,255,255,.20);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.85);}
-  .tool[aria-pressed=true] i{transform:scale(1.08);}
-  .tool[aria-pressed=true] small{opacity:1;font-weight:600;}
-  .dock{transition:transform .28s cubic-bezier(.3,.8,.3,1),opacity .28s;}
   body.drawing .dock{transform:translateY(calc(100% - 18px));opacity:.35;pointer-events:none;}
+  .dockbox{
+    display:flex;flex-direction:column;gap:5px;padding:5px;border-radius:26px;
+    background:linear-gradient(rgba(255,255,255,.16),rgba(255,255,255,.07));
+    border:1px solid rgba(255,255,255,.42);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 24px rgba(20,40,80,.18);
+    backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25);
+  }
+  .controls,.tools{
+    display:flex;align-items:center;border-radius:21px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.26);
+  }
+  .controls{padding:4px 6px;gap:0;}
+  .tools{padding:4px 5px;gap:4px;justify-content:space-between;}
+  .dock button{background:transparent;border:0;backdrop-filter:none;-webkit-backdrop-filter:none;color:#fff;
+    flex-direction:column;justify-content:center;gap:2px;padding:4px 0 3px;border-radius:16px;}
+  .dock button small{font-size:10px;letter-spacing:.02em;white-space:nowrap;
+    text-shadow:0 1px 3px rgba(30,50,90,.35);}
+  .ic{display:block;background:url(dock.webp) no-repeat;background-size:1300% 100%;
+    filter:drop-shadow(0 1px 3px rgba(30,50,90,.28));transition:transform .18s;}
+  .iconbtn,.tools2 .tool{flex:0 0 auto;width:50px;min-height:52px;}
+  .iconbtn .ic,.tools2 .ic{width:34px;height:34px;margin:-3px 0;}
+  .tools2{display:flex;align-items:center;}
+  .vsep{flex:0 0 1px;align-self:stretch;margin:10px 3px;background:rgba(255,255,255,.28);}
+  .tools .tool{flex:1 1 0;min-width:0;min-height:58px;
+    background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 1px rgba(255,255,255,.24);}
+  .tools .ic{width:38px;height:38px;}
+  /* 選んでいる道具 (と、開いている空の色) は、見本の「空の色」のように明るい札にする */
+  .dock button[aria-pressed=true],.dock #skyBtn.open{
+    background:linear-gradient(rgba(190,225,255,.62),rgba(140,190,245,.45));
+    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.75),0 0 14px rgba(170,215,255,.45);}
+  .dock button[aria-pressed=true] .ic{transform:scale(1.06);}
+  .dock button[aria-pressed=true] small{font-weight:600;}
+  .sizewrap{flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:0 6px 0 8px;}
+  .sizewrap input{min-width:0;width:100%;}   /* 枠が狭くても、つまみの線がはみ出さない */
+  .sizewrap span{font-size:11px;color:#fff;letter-spacing:.06em;text-shadow:0 1px 3px rgba(30,50,90,.35);}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:26px;background:transparent;}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;background:rgba(255,255,255,.55);border-radius:3px;}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+    background:#fff;margin-top:-9.5px;box-shadow:0 1px 8px rgba(20,40,80,.35);
+  }
+  input[type=range]::-moz-range-track{height:3px;background:rgba(255,255,255,.55);border-radius:3px;}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:#fff;}
 
   .sheet{
     position:absolute;left:0;right:0;bottom:0;z-index:20;
@@ -272,22 +264,12 @@
 
 <p class="hint ui" id="hint">空に触れて、雲を置く</p>
 
-<div class="dock ui">
+<div class="dock ui"><div class="dockbox">
   <div class="controls">
-    <button class="iconbtn" id="skyBtn" aria-label="空の設定" title="空">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-        <circle cx="12" cy="10" r="3.6" fill="currentColor" stroke="none"/>
-        <path d="M12 2.6v1.9M12 15.5v1.9M4.5 10h1.9M17.6 10h1.9M6.7 4.7l1.3 1.3M16 14l1.3 1.3M17.3 4.7L16 6M8 14l-1.3 1.3"/>
-        <path d="M3 20.6h18" stroke-width="1.9"/>
-      </svg><small>空の色</small>
-    </button>
-    <button class="iconbtn" id="undoBtn" aria-label="元に戻す" title="元に戻す">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 9h9.5a5.5 5.5 0 1 1 0 11H8"/>
-        <path d="M7.6 5.2L3.8 9l3.8 3.8"/>
-      </svg><small>戻す</small>
-    </button>
+    <button class="iconbtn" id="skyBtn" aria-label="空の設定" title="空"><i class="ic" data-ic="sky" aria-hidden="true"></i><small>空の色</small></button>
+    <button class="iconbtn" id="undoBtn" aria-label="元に戻す" title="元に戻す"><i class="ic" data-ic="undo" aria-hidden="true"></i><small>戻す</small></button>
     <div class="tools2" id="tools2"></div>
+    <span class="vsep" aria-hidden="true"></span>
     <div class="sizewrap">
       <span>小</span>
       <input type="range" id="size" min="35" max="200" value="100" aria-label="雲の大きさ">
@@ -295,7 +277,7 @@
     </div>
   </div>
   <div class="tools" id="tools"></div>
-</div>
+</div></div>
 
 <div class="sheet" id="sheet">
   <div class="grab"></div>
@@ -369,7 +351,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v20';   /* sw.js の CACHE と揃える */
+var VER='v21';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -1208,19 +1190,21 @@ var GROUPS=[
   ['低い空',[['cumulus','綿雲'],['nyudo','入道雲'],['une','畝雲']]],
   ['他の道具',[['ray','光'],['sun','太陽'],['erase','消しゴム']]]
 ];
-/* tools.webp に並んでいる順番 */
-var SPRITE=['cirrus','scale','haze','hikou','cumulus','nyudo','une','ray','sun','erase'];
+/* dock.webp に並んでいる順番 (もらった見本の並び)。畝雲は見本の「積雲」の絵を使う。
+   見本の「巻雲」の絵は、今は使う道具が無い */
+var DOCKIC=['sky','undo','ray','sun','erase','cirrus','scale','haze','hikou','cumulus','nyudo','une','kenun'];
+function dockIcon(el,k){el.style.backgroundPosition=(DOCKIC.indexOf(k)/(DOCKIC.length-1)*100)+'% 0';}
+Array.prototype.forEach.call(document.querySelectorAll('.ic[data-ic]'),function(el){dockIcon(el,el.dataset.ic);});
 var toolsEl=document.getElementById('tools'),allTools=[];
-GROUPS.forEach(function(grp,gi){
+GROUPS.forEach(function(grp){
   var box=grp[0]==='他の道具'?document.getElementById('tools2'):toolsEl;
-  if(gi&&box===toolsEl){var sep=document.createElement('span');sep.className='tsep';sep.setAttribute('aria-hidden','true');toolsEl.appendChild(sep);}
   grp[1].forEach(function(t){
+    if(box!==toolsEl){var sep=document.createElement('span');sep.className='vsep';sep.setAttribute('aria-hidden','true');box.appendChild(sep);}
     var b=document.createElement('button');
     b.className='tool';b.type='button';b.dataset.t=t[0];
     b.setAttribute('aria-pressed',String(t[0]===S.tool));
     b.title=grp[0]+' — '+t[1];
-    var ic=document.createElement('i');ic.setAttribute('aria-hidden','true');
-    ic.style.backgroundPosition=(SPRITE.indexOf(t[0])/(SPRITE.length-1)*100)+'% 0';
+    var ic=document.createElement('i');ic.className='ic';ic.setAttribute('aria-hidden','true');dockIcon(ic,t[0]);
     var lb=document.createElement('small');lb.textContent=t[1];
     b.appendChild(ic);b.appendChild(lb);
     b.addEventListener('click',function(){
@@ -1430,6 +1414,9 @@ logo.addEventListener('click',function(e){
   if(!o)resetClear();
 });
 menu.addEventListener('click',function(e){e.stopPropagation();});
+/* 空の色のシートが開いている間は、空の色のボタンを明るい札にする (閉じる所があちこちにあるので、シートを見張る) */
+new MutationObserver(function(){document.getElementById('skyBtn').classList.toggle('open',sheet.classList.contains('open'));})
+  .observe(sheet,{attributes:true,attributeFilter:['class']});
 document.getElementById('skyBtn').addEventListener('click',function(e){
   e.stopPropagation();closeMenu();sheet.classList.toggle('open');wake();
 });
