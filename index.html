@@ -173,17 +173,31 @@
   .veil.open{display:flex;}
   .veil img{max-width:100%;max-height:70vh;border-radius:8px;box-shadow:0 12px 50px rgba(0,0,0,.6);}
   .veil p{font-size:12px;opacity:.7;margin:0;}
-  /* タイトル。絵 (852x1846) は画面 (430x932) とほぼ同じ縦横比なので、切らずに敷く。
-     ボタンは絵に描いてあるので、その上に見えない本物のボタンを重ねる (位置は絵の画素から測った) */
-  .title{position:absolute;inset:0;z-index:35;background:#8E9DB4;transition:opacity .7s ease;}
+  /* タイトル。背景の空 (704x1525) は画面 (430x932) とほぼ同じ縦横比なので、切らずに敷く。
+     題字 (title-logo.png) は最初にもらった絵から切り抜いたもの。
+     位置は、その絵 (852x1846) の中での位置を割合にしたもの */
+  .title{position:absolute;inset:0;z-index:35;background:#3F6BA8;transition:opacity .7s ease;}
   .title.gone{opacity:0;pointer-events:none;}
-  .title > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
-  .tbtn{position:absolute;border:0;padding:0;background:transparent;border-radius:999px;
-    backdrop-filter:none;-webkit-backdrop-filter:none;color:transparent;font-size:1px;}
-  .tbtn:active{transform:none;background:rgba(40,24,8,.14);}
-  #tStart{left:21.13%;top:73.67%;width:57.51%;height:6.93%;}
+  .title > img{position:absolute;display:block;pointer-events:none;}
+  .title .bg{inset:0;width:100%;height:100%;object-fit:cover;}
+  .title .logo-art{left:18.66%;top:15.71%;width:64.44%;height:15.33%; filter:drop-shadow(0 1px 10px rgba(255,236,200,.35));}
+  .tbtn{
+    position:absolute;justify-content:center;gap:10px;padding:0;border-radius:999px;
+    color:#FFF7EA;font-family:"Hiragino Maru Gothic ProN","ヒラギノ丸ゴ ProN",sans-serif;
+    background:linear-gradient(180deg,rgba(150,118,86,.50),rgba(118,90,64,.46));
+    border:1px solid rgba(255,240,220,.38);
+    box-shadow:inset 0 1px 0 rgba(255,245,230,.35),0 6px 22px rgba(80,50,20,.22);
+    backdrop-filter:blur(10px) saturate(1.1);-webkit-backdrop-filter:blur(10px) saturate(1.1);
+    text-shadow:0 1px 6px rgba(70,40,10,.25);
+  }
+  .tbtn:active{transform:scale(.97);background:linear-gradient(180deg,rgba(130,100,70,.6),rgba(100,76,52,.56));}
+  .tbtn svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+  #tStart{left:21.13%;top:73.67%;width:57.51%;height:6.93%; font-size:20px;letter-spacing:.3em;}
+  #tStart svg{width:38px;height:26px;}
+  #tHow,#tSet{font-size:14px;letter-spacing:.16em;}
   #tHow{left:19.95%;top:82.77%;width:29.34%;height:4.55%;}
   #tSet{left:53.52%;top:82.88%;width:26.53%;height:4.44%;}
+  #tHow svg,#tSet svg{width:22px;height:22px;}
   .card{
     position:absolute;left:22px;right:22px;top:50%;transform:translateY(-50%);z-index:36;
     background:var(--panel-solid);border:1px solid var(--line);border-radius:24px;
@@ -271,10 +285,11 @@
 </div>
 
 <div class="title" id="title">
-  <img src="title.jpg" alt="くもスケッチ — 空に触れて、雲を置く" decoding="async">
-  <button class="tbtn" id="tStart" aria-label="はじめる">はじめる</button>
-  <button class="tbtn" id="tHow" aria-label="あそびかた">あそびかた</button>
-  <button class="tbtn" id="tSet" aria-label="設定">設定</button>
+  <img class="bg" src="title-bg.jpg" alt="" decoding="async">
+  <img class="logo-art" src="title-logo.png" alt="くもスケッチ — 空に触れて、雲を置く">
+  <button class="tbtn" id="tStart"><svg viewBox="0 0 38 26" aria-hidden="true"><path d="M10 23h19a7 7 0 0 0 1-13.9A9.5 9.5 0 0 0 12.2 7 7.6 7.6 0 0 0 10 23z"/></svg><span>はじめる</span></button>
+  <button class="tbtn" id="tHow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C9.6 5 6.6 4.6 3.5 5v13c3.1-.4 6.1 0 8.5 1.5 2.4-1.5 5.4-1.9 8.5-1.5V5c-3.1-.4-6.1 0-8.5 1.5z"/><path d="M12 6.5v13"/></svg><span>あそびかた</span></button>
+  <button class="tbtn" id="tSet"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8l1.6 2.3 2.7-.7.7 2.7 2.7.9-.7 2.7 2 2-2 2 .7 2.7-2.7.9-.7 2.7-2.7-.7L12 21.2l-1.6-2.3-2.7.7-.7-2.7-2.7-.9.7-2.7-2-2 2-2-.7-2.7 2.7-.9.7-2.7 2.7.7z"/></svg><span>設定</span></button>
 </div>
 <div class="card" id="howCard" role="dialog" aria-label="あそびかた">
   <h2>あそびかた</h2>
@@ -310,7 +325,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v8';   /* sw.js の CACHE と揃える */
+var VER='v9';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -1043,7 +1058,7 @@ document.getElementById('tSet').addEventListener('click',function(){closeCards()
 document.getElementById('howClose').addEventListener('click',closeCards);
 document.getElementById('setClose').addEventListener('click',closeCards);
 document.getElementById('setSound').addEventListener('click',toggleSound);
-titleEl.querySelector('img').addEventListener('click',closeCards);
+titleEl.querySelector('.bg').parentNode.addEventListener('click',function(e){if(e.target===titleEl)closeCards();});
 
 buildNoise();buildGrain();resize();requestAnimationFrame(loop);
 

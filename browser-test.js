@@ -26,22 +26,21 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
 
   // --- タイトル ---
   const t = await p.evaluate(async () => {
-    const img = document.querySelector('#title img'); await img.decode();
-    const r = img.getBoundingClientRect();
-    // 絵の画素を読み、見えないボタンの真ん中が「絵に描いたボタン」(まわりの空より暗い) の上にあるか
-    const c = document.createElement('canvas'); c.width = r.width; c.height = r.height;
-    const g = c.getContext('2d'); g.drawImage(img, 0, 0, r.width, r.height);
-    const L = (x, y) => { const d = g.getImageData(Math.round(x), Math.round(y), 1, 1).data; return d[0] * .3 + d[1] * .59 + d[2] * .11; };
-    const btns = ['tStart', 'tHow', 'tSet'].map(id => { const b = document.getElementById(id).getBoundingClientRect();
-      const cy = b.top + b.height / 2, sky = (L(8, cy) + L(r.width - 8, cy)) / 2;
-      // 真ん中は字や絵が載るので、左右の端から 1/6 入った所を見る
-      return [b.left + b.width / 6, b.right - b.width / 6].map(x => Math.round(sky - L(x, cy))); });
+    const bg = document.querySelector('#title .bg'), logo = document.querySelector('#title .logo-art');
+    await bg.decode(); await logo.decode();
+    const r = bg.getBoundingClientRect(), lr = logo.getBoundingClientRect();
+    const btns = ['tStart', 'tHow', 'tSet'].map(id => { const e = document.getElementById(id), b = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      return { text: e.textContent.trim(), color: cs.color, top: b.top, bottom: b.bottom, left: b.left, right: b.right }; });
     return { shown: getComputedStyle(document.getElementById('title')).display !== 'none',
-      ratio: (img.naturalWidth / img.naturalHeight) / (r.width / r.height), btns };
+      ratio: (bg.naturalWidth / bg.naturalHeight) / (r.width / r.height),
+      logoRatio: (logo.naturalWidth / logo.naturalHeight) / (lr.width / lr.height), logoBottom: lr.bottom, btns };
   });
   check('開くとタイトルが出る', t.shown);
-  check('タイトルの絵が縦横比を保って敷かれる (差 1% 未満)', Math.abs(t.ratio - 1) < 0.01, t.ratio.toFixed(4));
-  check('見えないボタンが、絵に描いたボタンの上にある', t.btns.every(b => b.every(v => v > 20)), JSON.stringify(t.btns));
+  check('タイトルの空が縦横比を保って敷かれる (差 1% 未満)', Math.abs(t.ratio - 1) < 0.01, t.ratio.toFixed(4));
+  check('題字が縦横比を保って置かれる (差 1% 未満)', Math.abs(t.logoRatio - 1) < 0.01, t.logoRatio.toFixed(4));
+  // ボタンは絵ではなく本物: 名前が字で出ていて、画面の中にあり、題字と重ならない
+  check('ボタンの名前が字で出ている', t.btns.map(b => b.text).join('/') === 'はじめる/あそびかた/設定' && t.btns.every(b => b.color !== 'rgba(0, 0, 0, 0)'), t.btns.map(b => b.text).join('/'));
+  check('ボタンが画面の中にあり、題字と重ならない', t.btns.every(b => b.left >= 0 && b.right <= 430 && b.bottom <= 932 && b.top > t.logoBottom), JSON.stringify(t.btns.map(b => [Math.round(b.top), Math.round(b.bottom)])));
   // タイトルの上から空に触れても、雲は置かれない (指はタイトルが受け止める)
   await p.touchscreen.tap(215, 300); await p.waitForTimeout(100);
   const n0 = await p.evaluate(() => window.__app.strokes().length);
@@ -55,7 +54,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
   check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-  check('タイトルの絵を、オフライン用に先読みする', /'\.\/title\.jpg'/.test(sw));
+  check('タイトルの絵を、オフライン用に先読みする', /'\.\/title-bg\.jpg'/.test(sw) && /'\.\/title-logo\.png'/.test(sw));
 
   // 1. 全画面のものが fixed で置かれていない (fixed だと iOS の短い枠に合わせて下が空く)
   const fixed = await p.evaluate(() => [...document.querySelectorAll('body *')]

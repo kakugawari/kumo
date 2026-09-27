@@ -1,5 +1,5 @@
 /* くもスケッチ - service worker */
-const CACHE = 'kumo-sketch-v8';
+const CACHE = 'kumo-sketch-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,8 @@ const ASSETS = [
   './icon-maskable-512.png',
   './apple-touch-icon-180.png',
   './favicon-32.png',
-  './title.jpg'
+  './title-bg.jpg',
+  './title-logo.png'
 ];
 
 self.addEventListener('install', e => {
