@@ -335,7 +335,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v12';   /* sw.js の CACHE と揃える */
+var VER='v13';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -368,7 +368,7 @@ function mix(a,b,t){var x=hx(a),y=hx(b);return'#'+[0,1,2].map(function(i){var v=
 function lum(h){var c=hx(h);return(c[0]*.299+c[1]*.587+c[2]*.114)/255;}
 function clamp(v,a,b){return v<a?a:v>b?b:v;}
 function sunPos(){return{x:S.sunX*W,y:S.sunY*H};}
-function baseR(){return Math.min(W,H)*0.115*S.size;}
+function baseR(){return Math.min(W,H)*0.15*S.size;}
 
 /* ================= tileable fbm noise (as a float table) ================= */
 var NS=256, noiseArr=null;
@@ -406,44 +406,54 @@ function bloom(out,x,y,r,depth,rand,o){
   }
 }
 function genCumulus(x,y,R,seed){
-  var r=rng(seed),p=[],o={n:4,min:R*0.055,cap:110,wide:1.25,tall:0.62,floor:y+R*0.26};
-  bloom(p,x,y-R*0.04,R*0.48,2,r,o);
+  var r=rng(seed),p=[],o={n:4,min:R*0.04,cap:190,wide:1.25,tall:0.62,floor:y+R*0.26};
+  bloom(p,x,y-R*0.04,R*0.48,3,r,o);   /* 3段まで分けて、ふちに小さなこぶを出す */
   bloom(p,x-R*0.64,y+R*0.18,R*0.31,2,r,o);
   bloom(p,x+R*0.68,y+R*0.15,R*0.33,2,r,o);
-  bloom(p,x+R*0.08,y-R*0.40,R*0.22,2,r,o);
+  bloom(p,x+R*0.08,y-R*0.40,R*0.22,3,r,o);
   return p;
 }
 function genNyudo(x,y,R,seed){
   var r=rng(seed),p=[],yb=y+R*0.95,Hh=R*2.3;
-  var o={n:3,min:R*0.07,cap:190,wide:1.02,tall:0.95,floor:yb};
+  var o={n:3,min:R*0.05,cap:330,wide:1.02,tall:0.95,floor:yb};
   for(var i=0;i<6;i++){
     var t=i/5, sy=yb-t*Hh, sx=x+(r()-0.5)*R*0.5*t;
-    bloom(p,sx,sy,R*(0.46-0.14*t)*(1+0.16*Math.sin(t*3.1)),2,r,o);
+    bloom(p,sx,sy,R*(0.46-0.14*t)*(1+0.16*Math.sin(t*3.1)),3,r,o);
   }
-  var ao={n:3,min:R*0.09,cap:250,wide:1.9,tall:0.40,floor:yb-Hh*0.70};
+  bloom(p,x+(r()-0.5)*R*0.2,yb-Hh*0.84,R*0.30,2,r,{n:3,min:R*0.05,cap:9999,wide:1.3,tall:0.7});   /* 塔とかなとこをつなぐ */
+  var ao={n:3,min:R*0.07,cap:430,wide:1.9,tall:0.40,floor:yb-Hh*0.70};
   for(var k=-2;k<=2;k++)
     bloom(p,x+k*R*0.62+(r()-0.5)*R*0.2, yb-Hh*(0.90+r()*0.07), R*(0.30-Math.abs(k)*0.045),1,r,ao);
   return p;
 }
 function genScale(x,y,R,seed){
-  var r=rng(seed),p=[],cell=R*0.15;
-  for(var cx=-8;cx<=8;cx++)for(var cy=-6;cy<=6;cy++){
-    var px=x+cx*cell*1.02+(r()-0.5)*cell*0.6;
-    var py=y+cy*cell*0.80+(r()-0.5)*cell*0.5;
-    var d=Math.hypot((px-x)/(R*1.3),(py-y)/(R*0.8));
-    if(d>1||r()>1-d*d*0.9)continue;
-    p.push({x:px,y:py,rr:cell*(r()<0.22?0.5:0.30+r()*0.18)*(1-d*0.3),sx:1.3});
+  /* 鱗雲: 小さな丸いかたまりが、すき間を空けて規則正しく並ぶ。粒は前より大きく、数を絞る */
+  var r=rng(seed),p=[],cell=R*0.16;
+  p.push({x:x,y:y,rr:R*1.05,sx:1.4,pk:0.75});   /* 粒どうしをつなぐ、うすい下地 */
+  for(var cx=-7;cx<=7;cx++)for(var cy=-5;cy<=5;cy++){
+    var px=x+cx*cell+(cy&1?cell*0.5:0)+(r()-0.5)*cell*0.35;
+    var py=y+cy*cell*0.78+(r()-0.5)*cell*0.3;
+    var d=Math.hypot((px-x)/(R*1.35),(py-y)/(R*0.85));
+    if(d>0.78||r()>1.05-d*d*0.8)continue;   /* 下地の外に出る粒は置かない (水玉に見える) */
+    var rr=cell*(0.62+r()*0.2)*(1-d*0.35);
+    p.push({x:px,y:py,rr:rr,sx:1.25,pk:0.6});
+    p.push({x:px+(r()-0.5)*rr*0.6,y:py-rr*0.25,rr:rr*0.62,sx:1.2,pk:0.5});
   }
   return p;
 }
-function genCirrus(x,y,R,seed){
-  var r=rng(seed),p=[],tilt=(r()-0.5)*0.4;
-  for(var i=0;i<44;i++){
-    var t=(i/43)*2-1;
-    var px=x+t*R*1.55+(r()-0.5)*R*0.10;
-    var py=y+t*R*tilt+Math.sin(t*2.6+seed)*R*0.11+(r()-0.5)*R*0.08;
-    p.push({x:px,y:py,rr:R*0.12*(1-t*t*0.7)*(0.55+r()*0.7),sx:3.2});
-    if(r()<0.4)p.push({x:px+(r()-0.5)*R*0.32,y:py+(r()-0.5)*R*0.2,rr:R*0.05*(0.6+r()),sx:2.6});
+function genCirrus(x,y,R,seed,ang){
+  /* 筋雲: なぞった向きに流れる細い筋を何本か。筋の先は少しはねる (はね雲) */
+  var r=rng(seed),p=[],ca=Math.cos(ang),sa=Math.sin(ang),nx=-sa,ny=ca,n=4+Math.floor(r()*3);
+  for(var k=0;k<n;k++){
+    var off=(k-(n-1)/2)*R*0.16+(r()-0.5)*R*0.08,L=R*(1.3+r()*1.2),sh=(r()-0.5)*R*0.5,hook=(r()<0.5?-1:1)*R*(0.12+r()*0.18);
+    var m=Math.round(L/(R*0.07)),ph=r()*6.28;
+    for(var i=0;i<=m;i++){
+      var t=i/m, u=(t-0.5)*L+sh, v=off+Math.sin(t*3.1+k)*R*0.05+t*t*t*hook;
+      var w=R*0.075*Math.sin(Math.PI*Math.min(1,t*1.15+0.05))*(0.65+r()*0.5);
+      if(w<R*0.008)continue;
+      var dvdt=(Math.cos(t*3.1+k)*3.1*R*0.05+3*t*t*hook)/L;
+      p.push({x:x+ca*u+nx*v,y:y+sa*u+ny*v,rr:w,sx:3.4,rot:ang+Math.atan(dvdt),pk:0.45+0.35*Math.sin(t*9+ph)+r()*0.2});
+    }
   }
   return p;
 }
@@ -452,6 +462,7 @@ function genUne(x,y,R,seed){
   for(var j=0;j<3;j++){
     var yy=y+(j-1)*R*0.44;
     o.floor=yy+R*0.13;
+    p.push({x:x,y:yy,rr:R*0.95,sx:1.45,pk:0.5});   /* 列ごとのうすい下地で、玉を畝につなぐ */
     for(var i=0;i<4;i++){
       var xx=x+(i-1.5)*R*0.64+(r()-0.5)*R*0.22;
       bloom(p,xx,yy+(r()-0.5)*R*0.06,R*0.27*(1-Math.abs(j-1)*0.13),2,r,o);
@@ -468,31 +479,35 @@ function genHaze(x,y,R,seed){
   return p;
 }
 function genHikou(x,y,R,seed,ang){
-  var r=rng(seed),p=[],ca=Math.cos(ang),sa=Math.sin(ang),len=R*1.7;
-  for(var i=0;i<24;i++){
-    var t=(i/23)-0.5;
-    var px=x+ca*len*t, py=y+sa*len*t;
-    var w=R*0.05*(1+Math.abs(t)*1.1)*(0.7+r()*0.6);
-    p.push({x:px+(r()-0.5)*R*0.05,y:py+(r()-0.5)*R*0.05,rr:w,sx:1});
-    if(r()<0.32)p.push({x:px+(r()-0.5)*R*0.2,y:py+(r()-0.5)*R*0.14,rr:R*0.028*(0.5+r()),sx:1.5});
+  /* 飛行機雲: 途切れない1本 (2本のエンジンの跡が、うしろで1本に広がる)。
+     点どうしの間隔を太さより狭くして、玉の連なりに見えないようにする */
+  var r=rng(seed),p=[],ca=Math.cos(ang),sa=Math.sin(ang),nx=-sa,ny=ca,len=R*1.7,m=70;
+  for(var i=0;i<=m;i++){
+    var t=i/m-0.5, u=len*t, age=0.5-t, w=R*(0.022+0.05*age*age)*(0.9+r()*0.2);   /* 先頭 (t=0.5) が細く、うしろほど太く薄い */
+    var sep=R*0.03*(0.5+t),ends=Math.min(1,(0.5-Math.abs(t))*7);   /* 両端は細く消えるように */
+    for(var e=-1;e<=1;e+=2)
+      p.push({x:x+ca*u+nx*sep*e,y:y+sa*u+ny*sep*e,rr:w,sx:1.8,rot:ang,pk:(1-0.8*age)*ends});
+    if(r()<0.25)p.push({x:x+ca*u+nx*(r()-0.5)*R*0.1*age*2,y:y+sa*u+ny*(r()-0.5)*R*0.1*age*2,rr:w*1.4,sx:2.4,rot:ang,pk:0.6-0.3*age});
   }
   return p;
 }
 /* per-brush look: peak density, march steps, absorption, alpha ramp, fbm wobble */
+var QD={cirrus:1.1,hikou:1.1,scale:0.95,haze:0.55};
 var CP={
-  cumulus:{peak:.17,steps:9,absorb:.42,t0:.24,tw:.26,a:1,  wob:1.00},
-  nyudo  :{peak:.17,steps:9,absorb:.42,t0:.24,tw:.26,a:1,  wob:1.00},
-  une    :{peak:.16,steps:8,absorb:.34,t0:.22,tw:.26,a:1,  wob:0.90},
-  scale  :{peak:.30,steps:5,absorb:.20,t0:.16,tw:.18,a:.90,wob:0.55},
-  cirrus :{peak:.26,steps:5,absorb:.20,t0:.10,tw:.18,a:.62,wob:1.35},
-  haze   :{peak:.10,steps:4,absorb:.10,t0:.05,tw:.15,a:.40,wob:1.50},
-  hikou  :{peak:.30,steps:4,absorb:.14,t0:.12,tw:.16,a:.72,wob:0.80}
+  cumulus:{peak:.23,steps:7,absorb:.50,t0:.20,tw:.14,a:1,  wob:0.55},
+  nyudo  :{peak:.23,steps:7,absorb:.50,t0:.20,tw:.14,a:1,  wob:0.55},
+  une    :{peak:.21,steps:7,absorb:.42,t0:.19,tw:.15,a:1,  wob:0.55},
+  scale  :{peak:.26,steps:6,absorb:.30,t0:.17,tw:.16,a:.92,wob:1.05},
+  cirrus :{peak:.20,steps:5,absorb:.14,t0:.06,tw:.34,a:.72,wob:0.90},
+  haze   :{peak:.10,steps:4,absorb:.10,t0:.05,tw:.18,a:.40,wob:0.80},
+  hikou  :{peak:.34,steps:4,absorb:.12,t0:.10,tw:.22,a:.85,wob:0.60}
 };
 function bbox(p,pad){
   var a=1e9,b=1e9,c=-1e9,d=-1e9;
   for(var i=0;i<p.length;i++){var q=p[i];
-    if(q.x-q.rr*q.sx<a)a=q.x-q.rr*q.sx; if(q.x+q.rr*q.sx>c)c=q.x+q.rr*q.sx;
-    if(q.y-q.rr<b)b=q.y-q.rr; if(q.y+q.rr>d)d=q.y+q.rr;}
+    var ex=q.rr*q.sx, ey=q.rot?ex:q.rr;   /* 回した粒は、縦にも伸びうる */
+    if(q.x-ex<a)a=q.x-ex; if(q.x+ex>c)c=q.x+ex;
+    if(q.y-ey<b)b=q.y-ey; if(q.y+ey>d)d=q.y+ey;}
   a-=pad;b-=pad;c+=pad;d+=pad;
   return{x:a,y:b,w:c-a,h:d-b};
 }
@@ -511,13 +526,15 @@ function shapeCloud(s){
         : t==='scale'  ?genScale(s.x,s.y,R,s.seed)
         : t==='haze'   ?genHaze(s.x,s.y,R,s.seed)
         : t==='hikou'  ?genHikou(s.x,s.y,R,s.seed,s.a||0)
-        :               genCirrus(s.x,s.y,R,s.seed);
+        :               genCirrus(s.x,s.y,R,s.seed,s.a||0);
   s.pc=null;
   if(!p.length)return;
   var bb=bbox(p,R*0.5);
   if(bb.w<3||bb.h<3)return;
 
-  var q=Math.min(0.62, 430/Math.max(bb.w,bb.h));
+  /* 雲の絵の細かさ (画面の点 1 つあたりの画素)。0.62 だと筋雲のふちが階段状にガタついた。
+     細い雲ほど細かく作る。大きすぎる雲は 520 画素に収める */
+  var q=Math.min(QD[t]||0.8, 520/Math.max(bb.w,bb.h));
   var w=Math.max(3,Math.ceil(bb.w*q)), h=Math.max(3,Math.ceil(bb.h*q));
   den.c.width=w; den.c.height=h;
   var g=den.x;
@@ -530,10 +547,11 @@ function shapeCloud(s){
   g.globalCompositeOperation='lighter';
   for(var i=0;i<p.length;i++){
     var qq=p[i],rr=qq.rr; if(rr*q<0.6)continue;
-    g.save();g.translate(qq.x,qq.y);g.scale(qq.sx,1);
+    g.save();g.translate(qq.x,qq.y);if(qq.rot)g.rotate(qq.rot);g.scale(qq.sx,1);
     var gr=g.createRadialGradient(0,0,0,0,0,rr);
-    gr.addColorStop(0,'rgba(255,255,255,'+peak+')');
-    gr.addColorStop(0.45,'rgba(255,255,255,'+(peak*0.62)+')');
+    var pk=peak*(qq.pk||1);
+    gr.addColorStop(0,'rgba(255,255,255,'+pk+')');
+    gr.addColorStop(0.45,'rgba(255,255,255,'+(pk*0.62)+')');
     gr.addColorStop(1,'rgba(255,255,255,0)');
     g.fillStyle=gr;g.beginPath();g.arc(0,0,rr,0,6.2832);g.fill();g.restore();
   }
@@ -567,10 +585,12 @@ function lightCloud(s){
   /* --- 3. march toward the sun, shade, write out --- */
   var sp=sunPos(),ldx=sp.x-s.x,ldy=sp.y-s.y,L=Math.hypot(ldx,ldy)||1;
   ldx/=L;ldy/=L;
-  var step=2.4, steps=cp.steps, absorb=cp.absorb;
+  var step=2.4*pc.q/0.62, steps=cp.steps, absorb=cp.absorb;   /* 光を追う1歩は、細かさによらず同じ長さに */
   var t0=cp.t0, t1=t0+cp.tw, typeA=cp.a;
 
-  var cd=hx(S.dark),cl=hx(S.light),cr=hx(S.rim),cb=hx(S.bot);
+  /* 影には空の青が映る。積み上がる雲 (綿雲・入道雲・畝雲) は、底ほど暗く平たく見せる */
+  var cd=hx(mix(S.dark,S.skyMid||S.top,0.3)),cl=hx(S.light),cr=hx(S.rim),cb=hx(S.bot);
+  var heap=(t==='cumulus'||t==='nyudo'||t==='une');
   for(var y2=0;y2<h;y2++){
     for(var x2=0;x2<w;x2++){
       var i2=y2*w+x2, dv=D[i2], o=i2<<2;
@@ -585,6 +605,7 @@ function lightCloud(s){
       var T=Math.exp(-sum*absorb);
       T=0.09+0.91*T;
       var lm=Math.pow(T,0.85);
+      if(heap){lm=0.32+0.68*lm;var bd=clamp((y2/h-0.42)*1.3,0,0.6);lm*=1-bd*0.45;}   /* 陰にも空の明るさが回る */
       var thin=1-clamp(dv*1.25,0,1);
       var rim=Math.pow(T,2.2)*thin*0.8;
       var r=cd[0]+(cl[0]-cd[0])*lm, gg2=cd[1]+(cl[1]-cd[1])*lm, b=cd[2]+(cl[2]-cd[2])*lm;
@@ -857,7 +878,7 @@ function bakeFresh(){
   freshS=null;freshA=1;
 }
 function layerX(x){return((x-drift)%W+W)%W;}
-var SZ={scale:1.3,nyudo:0.85,erase:0.7,une:1.15,haze:2.0,hikou:1.6};
+var SZ={scale:1.3,nyudo:1.05,erase:0.7,une:1.15,haze:1.35,hikou:1.6};
 var gid=0;   /* ひとなぞりの番号。元に戻すは、この番号ごとにまとめて戻す */
 function addStroke(x,y,tap,ang){
   var t=S.tool;

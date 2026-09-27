@@ -13,6 +13,8 @@ const srv = http.createServer((q, r) => {
 });
 
 let fails = 0;
+// 線引きは、直す前と後を6回ずつ測って、その間に置いた
+const HIKOU_EVEN = 0.40;   // 直す前 0.18〜0.36 / 今 0.45〜0.81
 function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (info ? '  ' + info : '')); if (!ok) fails++; }
 
 (async () => {
@@ -80,6 +82,49 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('プレイ画面の空の色が、タイトルの空に近い (上・中)', sky.d.every(v => v < 60), JSON.stringify(sky.d));
   check('雲の上の空で、太陽が月にならない', sky.sunLabel === '太陽', sky.sunLabel);
   check('太陽の照りを毎コマ塗らない (空の下地に焼き付け)', sky.per <= 1, 'radialGradient/コマ=' + sky.per);
+
+  // --- 雲の形と細かさ ---
+  const cl = await p.evaluate(async () => {
+    const cv = document.getElementById('cv'), A = window.__app;
+    function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
+    function drag(tool, x0, y0, x1, y1) { document.querySelector('[data-t=' + tool + ']').click(); T('touchstart', x0, y0);
+      for (let i = 1; i <= 12; i++) T('touchmove', x0 + (x1 - x0) * i / 12, y0 + (y1 - y0) * i / 12); T('touchend', 0, 0);
+      return A.strokes().filter(s => s.t === tool && s.pc).pop(); }
+    const out = {};
+    // 筋雲は細かく作る (0.62 だとふちが階段状にガタついた)。なぞった向きに流れる
+    const cv1 = drag('cirrus', 215, 150, 225, 500);
+    out.cirrusQ = cv1.pc.q; out.cirrusTall = cv1.pc.bb.h / cv1.pc.bb.w;
+    // 飛行機雲は途切れない: 中心の線に沿って濃さを測り、薄い所が無い
+    const hk = drag('hikou', 60, 600, 380, 520);
+    { const pc = hk.pc, a = hk.a, n = 60; let gaps = 0; const prof = [];
+      // 先頭では2本のエンジンの跡が左右に分かれるので、真ん中の線ではなく、横幅の中でいちばん濃い所を見る。
+      // 両端はわざと細く消しているので、真ん中 6 割だけを見る
+      for (let i = 12; i <= n - 12; i++) { const t = i / n - 0.5, L = hk.R * 1.7; let mx = 0;
+        for (let o = -0.08; o <= 0.08; o += 0.01) { const wx = hk.x + Math.cos(a) * L * t - Math.sin(a) * hk.R * o, wy = hk.y + Math.sin(a) * L * t + Math.cos(a) * hk.R * o;
+          const x = Math.round((wx - pc.bb.x) * pc.q), y = Math.round((wy - pc.bb.y) * pc.q); mx = Math.max(mx, pc.D[y * pc.w + x] || 0); }
+        if (!(mx > 0.1)) gaps++; prof.push(mx); }
+      // 玉の連なりだと、線に沿って濃い・薄いが波打つ。いちばん薄い所 ÷ 真ん中の値
+      const sorted = prof.slice().sort((p, q) => p - q);
+      out.hikouGaps = gaps; out.hikouEven = sorted[0] / sorted[sorted.length >> 1]; }
+    // 鱗雲は水玉ではなく、つながった鱗: 見えている画素のうち、いちばん大きなかたまりが占める割合
+    document.querySelector('[data-t=scale]').click(); T('touchstart', 215, 320); T('touchend', 0, 0);
+    { const sc = A.strokes().filter(s => s.t === 'scale' && s.pc).pop(), im = sc.pc.lit, w = im.width, h = im.height, d = im.data;
+      const seen = new Uint8Array(w * h); let total = 0, best = 0;
+      for (let k = 0; k < w * h; k++) if (d[k * 4 + 3] > 128) total++;
+      for (let k = 0; k < w * h; k++) { if (seen[k] || d[k * 4 + 3] <= 128) continue; let n = 0; const st = [k]; seen[k] = 1;
+        while (st.length) { const q = st.pop(); n++; const x = q % w, y = (q / w) | 0;
+          for (const nb of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, y > 0 ? q - w : -1, y < h - 1 ? q + w : -1])
+            if (nb >= 0 && !seen[nb] && d[nb * 4 + 3] > 128) { seen[nb] = 1; st.push(nb); } }
+        if (n > best) best = n; }
+      out.scaleMain = Math.round(100 * best / total); }
+    document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
+    return out;
+  });
+  check('筋雲は細かく作る (画面の点1つあたり 1 画素以上)', cl.cirrusQ >= 1, 'q=' + cl.cirrusQ);
+  check('筋雲は、なぞった向きに流れる (縦になぞると縦長)', cl.cirrusTall > 0.9, '縦/横=' + cl.cirrusTall.toFixed(2));
+  check('飛行機雲が途切れず、玉の連なりに見えない (線に沿った濃さのむら)', cl.hikouGaps === 0 && cl.hikouEven > HIKOU_EVEN, '薄い所=' + cl.hikouGaps + ' むら=' + cl.hikouEven.toFixed(2));
+  check('鱗雲は水玉ではなく、ひとつながり (いちばん大きなかたまりが 4割以上)', cl.scaleMain >= 40, cl.scaleMain + '%');
 
   // --- 道具箱・雲海 ---
   const dk = await p.evaluate(async () => {
