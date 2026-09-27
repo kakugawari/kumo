@@ -38,6 +38,11 @@
   .sea{position:absolute;left:0;right:0;bottom:0;width:100%;height:200px;object-fit:cover;object-position:50% 100%;
     z-index:1;pointer-events:none;
     -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 16%);mask-image:linear-gradient(180deg,transparent 0,#000 16%);}
+  /* 足もとのシルエット (山・街・丘・海辺)。空の色に合わせて描き直す 1 枚のキャンバス */
+  .ground{position:absolute;left:0;right:0;bottom:0;width:100%;z-index:1;pointer-events:none;display:none;}
+  .gchips{display:flex;flex-wrap:wrap;gap:8px;}
+  .gchip{padding:8px 15px;border-radius:999px;font-size:12.5px;letter-spacing:.08em;}
+  .gchip[aria-pressed=true]{background:rgba(255,255,255,.9);color:#111827;border-color:transparent;}
   .ui{transition:opacity .9s ease;}
   body.dim .ui{opacity:.28;}
 
@@ -232,7 +237,8 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<img class="sea" id="sea" src="sea-gold.jpg" alt="">
+<img class="sea" id="sea" src="sea-gold.jpg" alt="" style="display:none">
+<canvas class="ground" id="ground"></canvas>
 
 <div class="top ui">
   <button id="logo" class="logo" aria-expanded="false" aria-controls="menu">
@@ -280,6 +286,8 @@
   <div class="grab"></div>
   <h2>空の色</h2>
   <div class="presets" id="presets"></div>
+  <h2>足もと</h2>
+  <div class="gchips" id="grounds"></div>
   <h2>詳細</h2>
   <div class="rows">
     <div class="row"><label for="cTop">空・上</label><input type="color" id="cTop"></div>
@@ -335,7 +343,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v13';   /* sw.js の CACHE と揃える */
+var VER='v14';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -356,7 +364,7 @@ var THEMES={
 };
 var SKYKEYS=['top','skyMid','bot','hz','hzY','sea','sun','dark','mid','light','rim'];
 var S={theme:'kumoue',top:'',bot:'',sun:'',dark:'',mid:'',light:'',rim:'',
-       sunX:0.80,sunY:0.15,sunR:0.9,wind:0.05,tool:'cumulus',size:1};
+       ground:'none',sunX:0.80,sunY:0.15,sunR:0.9,wind:0.05,tool:'cumulus',size:1};
 (function(t){SKYKEYS.forEach(function(k){S[k]=t[k];});})(THEMES.kumoue);
 var strokes=[];
 
@@ -688,7 +696,7 @@ function buildSky(){
   var g=skyC.x;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
   var gr=g.createLinearGradient(0,0,0,H);
   if(S.skyMid){
-    var y=S.hzY;
+    var y=horizonY();
     gr.addColorStop(0,S.top);gr.addColorStop(0.42,S.skyMid);
     gr.addColorStop(y-0.10,S.bot);gr.addColorStop(y,S.hz);gr.addColorStop(1,S.sea);
   }else{
@@ -699,11 +707,12 @@ function buildSky(){
   hz.addColorStop(0,rgba(S.bot,0));hz.addColorStop(1,rgba(S.skyMid?S.sea:S.bot,S.skyMid?0.25:0.55));
   g.fillStyle=hz;g.fillRect(0,H*0.55,W,H*0.45);
   if(S.skyMid){   /* 地平線の金の帯を、横に細くにじませる */
-    var y2=S.hzY*H,bh=H*0.035,bg=g.createLinearGradient(0,y2-bh,0,y2+bh);
+    var y2=horizonY()*H,bh=H*0.035,bg=g.createLinearGradient(0,y2-bh,0,y2+bh);
     bg.addColorStop(0,rgba(S.hz,0));bg.addColorStop(0.5,rgba(mix(S.hz,'#ffffff',0.15),0.30));bg.addColorStop(1,rgba(S.hz,0));
     g.fillStyle=bg;g.fillRect(0,y2-bh,W,bh*2);
   }
   if(!isNight())paintSunGlow(g);
+  drawGround();
   document.documentElement.style.backgroundColor=S.skyMid?S.sea:S.bot;
   sunSprite=null;
 }
@@ -1011,6 +1020,86 @@ GROUPS.forEach(function(grp,gi){
 document.getElementById('size').addEventListener('input',function(e){S.size=e.target.value/100;wake();});
 
 /* the sun becomes the moon once the sky is dark enough */
+/* ================= 足もと =================
+   なし / 雲海 (絵) / 山・街・丘・海辺 (1色のシルエットを計算で描く仮のもの。絵が来たら差し替える)。
+   シルエットの色は空から決める: 手前ほど暗く、遠いほど地平線の色に溶ける */
+var GROUNDS=[['none','なし'],['sea','雲海'],['mount','山'],['city','街'],['hill','丘'],['shore','海辺']];
+var GHZ={none:0.97,sea:null,mount:0.84,city:0.86,hill:0.87,shore:0.86};   /* 地平線の高さ (画面の割合) */
+function horizonY(){var v=GHZ[S.ground];return v==null?S.hzY:v;}
+var groundEl=document.getElementById('ground'),gx=groundEl.getContext('2d'),GH_=0.26;
+function drawGround(){
+  var kind=S.ground,show=!(kind==='none'||kind==='sea');
+  groundEl.style.display=show?'block':'none';
+  document.getElementById('sea').style.display=kind==='sea'?'block':'none';
+  if(!show||!W)return;
+  var gh=Math.round(H*GH_),top=H-gh;
+  groundEl.style.height=gh+'px';
+  if(groundEl.width!==Math.round(W*dpr)||groundEl.height!==Math.round(gh*dpr)){groundEl.width=Math.round(W*dpr);groundEl.height=Math.round(gh*dpr);}
+  var g=gx;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,gh);
+  var hzc=S.hz||S.bot,night=isNight();
+  var near=mix(S.skyMid?S.sea:S.bot,'#0A0D1A',night?0.9:0.78),mid=mix(near,hzc,0.28),far=mix(near,hzc,0.5);
+  var hy=horizonY()*H-top,r=rng({mount:11,city:22,hill:33,shore:44}[kind]);
+  function ridge(base,amp,oct,col,seed){
+    var rr=rng(seed),ph=[],k;for(k=0;k<oct;k++)ph.push([rr()*6.28,rr()*6.28]);
+    g.fillStyle=col;g.beginPath();g.moveTo(0,gh);
+    for(var x=0;x<=W;x+=3){var v=0,a=1,f=1,n=0;
+      for(k=0;k<oct;k++){v+=a*(1-Math.abs(Math.sin(x/W*Math.PI*f*2+ph[k][0])));n+=a;a*=0.5;f*=2.1;}
+      g.lineTo(x,base-amp*v/n);}
+    g.lineTo(W,gh);g.closePath();g.fill();
+  }
+  function hills(base,amp,col,seed){
+    var rr=rng(seed),p1=rr()*6.28,p2=rr()*6.28;
+    g.fillStyle=col;g.beginPath();g.moveTo(0,gh);
+    for(var x=0;x<=W;x+=4)g.lineTo(x,base-amp*(0.55+0.3*Math.sin(x/W*5.2+p1)+0.15*Math.sin(x/W*11+p2)));
+    g.lineTo(W,gh);g.closePath();g.fill();
+    return function(x){return base-amp*(0.55+0.3*Math.sin(x/W*5.2+p1)+0.15*Math.sin(x/W*11+p2));};
+  }
+  if(kind==='mount'){
+    ridge(hy,gh*0.42,4,far,5);ridge(hy+gh*0.16,gh*0.30,4,mid,9);ridge(hy+gh*0.36,gh*0.18,3,near,13);
+  }else if(kind==='city'){
+    var lay=[[hy,far,0.34,0.6],[hy+gh*0.2,mid,0.26,0.8],[hy+gh*0.42,near,0.2,1]];
+    for(var li=0;li<lay.length;li++){
+      var L=lay[li],x=-5;g.fillStyle=L[1];
+      while(x<W){var bw=(8+r()*22)*L[3],bh2=gh*L[2]*(0.3+r()*0.7)*(r()<0.08?1.8:1);
+        g.fillRect(x,L[0]-bh2,bw,gh);
+        if(r()<0.12){g.fillRect(x+bw*0.45,L[0]-bh2-gh*0.08,1.2,gh*0.08);}   /* アンテナ */
+        if(night&&li===2){g.save();g.fillStyle='rgba(255,214,140,.85)';   /* 夜は手前の窓に灯り */
+          for(var wy=L[0]-bh2+4;wy<gh-4;wy+=6)for(var wx=x+2;wx<x+bw-3;wx+=5)if(r()<0.22)g.fillRect(wx,wy,2,2.4);g.restore();g.fillStyle=L[1];}
+        x+=bw+(r()<0.3?r()*6:0);}
+    }
+  }else if(kind==='hill'){
+    hills(hy+gh*0.02,gh*0.28,far,3);hills(hy+gh*0.22,gh*0.26,mid,7);
+    var h3=hills(hy+gh*0.48,gh*0.30,near,17);
+    g.fillStyle=near;   /* 手前の丘に木を数本 */
+    for(var t=0;t<6;t++){var tx=W*(0.08+r()*0.84),ty=h3(tx)+2,th=gh*(0.08+r()*0.08);
+      g.fillRect(tx-1,ty-th,2.2,th);g.beginPath();g.arc(tx,ty-th,th*0.55,0,6.2832);g.arc(tx-th*0.35,ty-th*0.7,th*0.4,0,6.2832);g.arc(tx+th*0.35,ty-th*0.75,th*0.42,0,6.2832);g.fill();}
+  }else if(kind==='shore'){
+    /* 海: 地平線から手前へ、空を映した色が濃くなる。太陽の下に光の道 */
+    var sg=g.createLinearGradient(0,hy,0,gh);
+    sg.addColorStop(0,mix(hzc,S.skyMid||S.top,0.35));sg.addColorStop(1,mix(S.skyMid||S.top,'#0A0D1A',0.55));
+    g.fillStyle=sg;g.fillRect(0,hy,W,gh-hy);
+    var sx=S.sunX*W;g.fillStyle=rgba(mix(S.sun,'#ffffff',0.3),night?0.35:0.55);
+    for(var yy=hy+2;yy<gh;yy+=3){var wv=(4+(yy-hy)*0.5)*(0.5+r());if(r()<0.7)g.fillRect(sx-wv/2+(r()-0.5)*(yy-hy)*0.6,yy,wv,1.2);}
+    /* 右の岬と灯台 */
+    g.fillStyle=near;g.beginPath();g.moveTo(W*0.58,gh);
+    for(var cx=W*0.58;cx<=W;cx+=4){var u=(cx-W*0.58)/(W*0.42);g.lineTo(cx,hy+gh*0.06-gh*0.34*Math.pow(Math.sin(Math.min(1,u*1.3)*1.5708),0.8));}
+    g.lineTo(W,gh);g.closePath();g.fill();
+    var lx=W*0.82,ly=hy+gh*0.06-gh*0.34*Math.pow(Math.sin(Math.min(1,(lx-W*0.58)/(W*0.42)*1.3)*1.5708),0.8);
+    g.fillRect(lx-3,ly-gh*0.2,6,gh*0.2);g.fillRect(lx-5,ly-gh*0.2-3,10,3);
+    g.fillStyle=night?'rgba(255,226,160,.95)':rgba(near,1);g.fillRect(lx-2.5,ly-gh*0.2-8,5,5);
+  }
+}
+var gEl=document.getElementById('grounds'),gBtns=[];
+GROUNDS.forEach(function(gd){
+  var b=document.createElement('button');b.type='button';b.className='gchip';b.dataset.g=gd[0];b.textContent=gd[1];
+  b.setAttribute('aria-pressed',String(gd[0]===S.ground));
+  b.addEventListener('click',function(){
+    S.ground=gd[0];gBtns.forEach(function(c){c.setAttribute('aria-pressed',String(c.dataset.g===S.ground));});
+    buildSky();wake();
+  });
+  gBtns.push(b);gEl.appendChild(b);
+});
+
 /* 雲海は空に合わせて絵を替える (金・昼・夜の3枚)。朝焼けと黄昏は金の絵の色を少し寄せる */
 var SEA={kumoue:['gold',''],yuyake:['gold',''],asayake:['gold','saturate(.9) hue-rotate(-10deg)'],
   tasogare:['gold','brightness(.72) saturate(1.1) hue-rotate(-12deg)'],hiruma:['day',''],yoru:['night','']};
@@ -1104,12 +1193,13 @@ clearBtn.addEventListener('click',function(){
   strokes=[];rebuild();closeMenu();
 });
 var veil=document.getElementById('veil'),veilImg=document.getElementById('veilImg');
-/* 保存する絵には雲海も入れる (雲海はキャンバスの外の画像なので、同じ位置・同じ溶かし方で重ねる) */
+/* 保存する絵には足もとも入れる (キャンバスの外にあるので、同じ位置・同じ溶かし方で重ねる) */
 function snapshot(){
   var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;var g=c.getContext('2d');
   g.drawImage(cv,0,0);
   var se=document.getElementById('sea'),r=se.getBoundingClientRect(),k=cv.width/W;
-  if(se.complete&&se.naturalWidth){
+  if(S.ground!=='none'&&S.ground!=='sea'){var gr=groundEl.getBoundingClientRect();g.drawImage(groundEl,Math.round(gr.left*k),Math.round(gr.top*k),Math.round(gr.width*k),Math.round(gr.height*k));}
+  if(S.ground==='sea'&&se.complete&&se.naturalWidth){
     var t=document.createElement('canvas');t.width=Math.round(r.width*k);t.height=Math.round(r.height*k);var tg=t.getContext('2d');
     /* object-fit: cover と同じ切り方 */
     var sc=Math.max(t.width/se.naturalWidth,t.height/se.naturalHeight),dw=se.naturalWidth*sc,dh=se.naturalHeight*sc;

@@ -136,14 +136,16 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     const Z = im.naturalHeight, n = im.naturalWidth / Z, corners = [];
     for (let i = 0; i < n; i++) for (const [x, y] of [[2, 2], [Z - 3, 2], [2, Z - 3], [Z - 3, Z - 3]]) corners.push(g.getImageData(i * Z + x, y, 1, 1).data[3]);
     const dock = document.querySelector('.dock').getBoundingClientRect();
-    const sea = document.getElementById('sea');
+    const sea = document.getElementById('sea'), seaDefault = getComputedStyle(sea).display, groundDefault = getComputedStyle(document.getElementById('ground')).display;
+    document.querySelector('.gchip[data-g=sea]').click();
     return { n: tools.length, uniq: new Set(pos).size, cells: n, cornerMax: Math.max(...corners), dockH: Math.round(dock.height),
-      seaOk: sea.complete && sea.naturalWidth > 0, seaPE: getComputedStyle(sea).pointerEvents, seaBottom: Math.round(sea.getBoundingClientRect().bottom) };
+      seaDefault, groundDefault, seaOk: sea.complete && sea.naturalWidth > 0, seaPE: getComputedStyle(sea).pointerEvents, seaBottom: Math.round(sea.getBoundingClientRect().bottom) };
   });
   check('道具10個が、それぞれ別の絵を使う', dk.n === 10 && dk.uniq === 10 && dk.cells === 10, dk.n + '個 / 絵' + dk.uniq + '種');
   check('道具の絵の四隅が透明 (市松模様が残っていない)', dk.cornerMax === 0, 'alpha最大=' + dk.cornerMax);
   check('道具箱が低い (空を広く見せる)', dk.dockH <= 150, dk.dockH + 'px');
-  check('雲海が画面の下に敷かれ、指を通す', dk.seaOk && dk.seaPE === 'none' && dk.seaBottom === 932, JSON.stringify(dk));
+  check('はじめの足もとは「なし」(雲海もシルエットも出さない)', dk.seaDefault === 'none' && dk.groundDefault === 'none', dk.seaDefault + '/' + dk.groundDefault);
+  check('雲海を選ぶと画面の下に敷かれ、指を通す', dk.seaOk && dk.seaPE === 'none' && dk.seaBottom === 932, JSON.stringify(dk));
   // 雲海は空に合わせて絵を替える。金の絵の空の部分はマゼンタだったので、残っていないこと
   const seaSw = await p.evaluate(async () => {
     const pick = k => { document.querySelector('.preset[data-k=' + k + ']').click(); return document.getElementById('sea').getAttribute('src'); };
@@ -176,6 +178,36 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     return diff;
   });
   check('保存する絵に雲海も入る', sv > 30, '下端の差=' + sv);
+  // --- 足もとのシルエット ---
+  const gd = await p.evaluate(async () => {
+    const el = document.getElementById('ground'), sea = document.getElementById('sea'), out = {};
+    const pick = (g, th) => { if (th) document.querySelector('.preset[data-k=' + th + ']').click(); document.querySelector('.gchip[data-g=' + g + ']').click(); };
+    const px = (x, yFromBottom) => { const k = el.width / 430; return [...el.getContext('2d').getImageData(Math.round(x * k), Math.round(el.height - yFromBottom * k), 1, 1).data]; };
+    // 選ぶと出て、雲海は消える。どれも画面の下端に付き、指は通す
+    out.shown = ['mount', 'city', 'hill', 'shore'].map(g => { pick(g, 'kumoue'); const r = el.getBoundingClientRect();
+      return getComputedStyle(el).display === 'block' && getComputedStyle(sea).display === 'none' && Math.round(r.bottom) === 932 && getComputedStyle(el).pointerEvents === 'none' && px(215, 5)[3] > 200; });
+    // シルエットの色は空に合わせて変わる (同じ山を、雲の上・昼・夜で)
+    const cols = ['kumoue', 'hiruma', 'yoru'].map(th => { pick('mount', th); return px(215, 5).slice(0, 3); });
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    out.colDiff = Math.round(Math.min(dist(cols[0], cols[1]), dist(cols[0], cols[2]), dist(cols[1], cols[2])));
+    // 夜の街には灯りがともる (明るい画素がある)
+    pick('city', 'yoru'); { const d = el.getContext('2d').getImageData(0, 0, el.width, el.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 1] > 150) n++; out.lights = n; }
+    pick('city', 'kumoue'); { const d = el.getContext('2d').getImageData(0, 0, el.width, el.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 1] > 150) n++; out.dayLights = n; }
+    // 保存する絵にシルエットも入る
+    pick('mount', 'kumoue');
+    const cv = document.getElementById('cv'), k = cv.width / 430;
+    const snapImg = new Image(); document.getElementById('saveBtn').click(); snapImg.src = document.getElementById('veilImg').src; await snapImg.decode();
+    document.getElementById('veilClose').click();
+    const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(snapImg, 0, 0);
+    const a = g.getImageData(215 * k, 925 * k, 1, 1).data, b = el.getContext('2d').getImageData(Math.round(215 * el.width / 430), el.height - Math.round(7 * el.width / 430), 1, 1).data;
+    out.saveDiff = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+    pick('none', 'kumoue');
+    return out;
+  });
+  check('足もと (山・街・丘・海辺) を選ぶと、画面の下に出る', gd.shown.every(Boolean), JSON.stringify(gd.shown));
+  check('足もとの色が空に合わせて変わる (雲の上・昼・夜)', gd.colDiff > 12, '差の最小=' + gd.colDiff);
+  check('夜の街には灯りがともり、昼はともらない', gd.lights > 30 && gd.dayLights === 0, gd.lights + ' / ' + gd.dayLights);
+  check('保存する絵に足もとも入る', gd.saveDiff < 30, '差=' + gd.saveDiff);
 
   // 1. 全画面のものが fixed で置かれていない (fixed だと iOS の短い枠に合わせて下が空く)
   const fixed = await p.evaluate(() => [...document.querySelectorAll('body *')]
