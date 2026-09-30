@@ -56,7 +56,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
   check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'dock.webp', 'menu.webp', 'menu-title.webp', 'menu-skies.webp'].every(f => sw.includes("'./" + f + "'")));
+  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'dock.webp', 'menu.webp', 'menu-title.webp', 'menu-skies.webp', 'detail.webp'].every(f => sw.includes("'./" + f + "'")));
 
   // --- プレイ画面の空は、タイトルの空と同じ世界 (雲の上) ---
   const sky = await p.evaluate(async () => {
@@ -370,6 +370,66 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
     return out;
   });
+  // --- 詳細設定の頁 (2枚目の見本の絵に合わせた作り) ---
+  const dt = await p.evaluate(async () => {
+    const A = window.__app, S = A.S, sh = document.getElementById('sheet'), out = {};
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const cv = document.getElementById('cv');
+    function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
+    document.querySelector('[data-t=cumulus]').click(); T('touchstart', 80, 420); for (let i = 1; i <= 20; i++) T('touchmove', 80 + i * 14, 420); T('touchend', 0, 0);
+    sh.classList.add('open'); document.querySelector('.smrow[data-go=smDetail]').click(); await wait(100);
+    const pg = document.getElementById('smDetail'), sc = pg.querySelector('.dcards');
+    // 押すものは 44pt 以上。横にはみ出さない。いちばん下 (写真から) まで送って届く
+    const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    out.small = [...pg.querySelectorAll('button, .swatch')].filter(vis).map(e => { const r = e.getBoundingClientRect(); return [e.id || e.dataset.p || e.dataset.c || e.className, Math.round(r.width), Math.round(r.height)]; })
+      .filter(q => q[1] < 44 || q[2] < 44);
+    out.overX = [...pg.querySelectorAll('*')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > 430.5 || r.left < -0.5); }).length;
+    sc.scrollTop = 99999; await wait(50); const ph = document.getElementById('phColor').getBoundingClientRect(); out.photoReach = ph.bottom <= sc.getBoundingClientRect().bottom + 1 && ph.top >= 0; sc.scrollTop = 0;
+    function cloudStat() { const c = A.cloudC(), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let r = 0, g = 0, b = 0, n = 0, cov = 0, asum = 0;
+      for (let i = 0; i < d.length; i += 16) { if (d[i + 3] > 8) cov++; asum += d[i + 3]; if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } }
+      return { col: [r / n, g / n, b / n].map(Math.round), cov, amean: Math.round(asum / 1000) }; }
+    const relight = () => { while (A.rebuild(1)) { } };
+    relight(); const base = cloudStat();
+    // 雲の色の調整: 桃を選ぶと赤みが増え、「空の色のまま」で元に戻る
+    document.querySelector('.ct[data-c=momo]').click(); relight(); const momo = cloudStat();
+    document.querySelector('.ct[data-c=sora]').click(); relight(); const back = cloudStat();
+    out.tint = [base.col, momo.col, back.col, document.querySelector('.ct[aria-pressed=true]').dataset.c];
+    // 密度: 多いほど雲の広がり (見えている画素) が増える。透明度: 薄いほど濃さの合計が下がり、濃いほど上がる
+    const setR = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); relight(); return cloudStat(); };
+    out.dens = [setR('cDens', 0).cov, base.cov, setR('cDens', 100).cov]; setR('cDens', 50);
+    out.opa = [setR('cOpa', 0).amean, base.amean, setR('cOpa', 100).amean]; setR('cOpa', 50);
+    // 太陽の位置: 上を押すと太陽が上の真ん中へ動き、その札が明るくなる
+    document.querySelector('.seg[data-p=up]').click();
+    out.pos = [S.sunX, S.sunY, document.querySelector('.seg[aria-pressed=true]').dataset.p];
+    document.querySelector('.seg[data-p=right]').click();
+    // 光の強さは主の頁と同じ値を動かす
+    const l2 = document.getElementById('lightK2'); l2.value = 40; l2.dispatchEvent(new Event('input'));
+    out.light = [S.lightK, document.getElementById('lightK').value, document.getElementById('lightOut').textContent];
+    l2.value = 70; l2.dispatchEvent(new Event('input'));
+    // グラデーション: 昼の空 (段なし) で中ほどの色を決めると、段つきの空になって画面の中ほどの色が変わる
+    document.querySelector('.preset[data-k=hiruma]').click(); sh.classList.remove('peek');
+    document.querySelector('.dgrad').click(); out.grad = !document.getElementById('smGrad').hidden;
+    const px = () => { const k = cv.width / 430; return [...cv.getContext('2d').getImageData(Math.round(400 * k), Math.round(380 * k), 1, 1).data].slice(0, 3); };
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const g0 = px();
+    const c1 = document.getElementById('cG1'); c1.value = '#ff3366'; c1.dispatchEvent(new Event('input'));
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const g1 = px();
+    out.gradPx = [g0, g1, !!S.skyMid];
+    // × で閉じると空に戻る (次に開くと主の頁から)
+    document.querySelector('#smGrad [data-close]').click(); await wait(50);
+    out.closed = !sh.classList.contains('open') && !document.getElementById('smMain').hidden;
+    document.querySelector('.preset[data-k=kumoue]').click(); sh.classList.remove('peek');
+    document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
+    return out;
+  });
+  check('詳細設定で押すものは 44pt 以上、横にはみ出さず、いちばん下まで送って届く', dt.small.length === 0 && dt.overX === 0 && dt.photoReach, JSON.stringify([dt.small, dt.overX, dt.photoReach]));
+  check('雲の色の調整: 桃で赤みが増え (赤 − 緑)、「空の色のまま」で戻る', dt.tint[1][0] - dt.tint[1][1] > dt.tint[0][0] - dt.tint[0][1] + 8 && dt.tint[2].every((v, i) => Math.abs(v - dt.tint[0][i]) <= 2) && dt.tint[3] === 'sora', JSON.stringify(dt.tint));
+  check('雲の密度: 多いほど雲が広がる', dt.dens[0] < dt.dens[1] && dt.dens[1] < dt.dens[2], JSON.stringify(dt.dens));
+  check('雲の透明度: 薄いほど濃さの合計が下がり、濃いほど上がる', dt.opa[0] < dt.opa[1] * 0.6 && dt.opa[1] < dt.opa[2], JSON.stringify(dt.opa));
+  check('太陽の位置: 上を押すと上の真ん中へ動き、その札が明るくなる', dt.pos[0] === 0.5 && dt.pos[1] === 0.12 && dt.pos[2] === 'up', JSON.stringify(dt.pos));
+  check('詳細設定の光の強さは、主の頁の光の強さと同じ値', dt.light[0] === 0.4 && dt.light[1] === '40' && dt.light[2] === '40%', JSON.stringify(dt.light));
+  check('グラデーション: 段なしの空で中ほどの色を決めると、空の中ほどが変わる', dt.grad && dt.gradPx[2] && Math.hypot(dt.gradPx[0][0] - dt.gradPx[1][0], dt.gradPx[0][1] - dt.gradPx[1][1], dt.gradPx[0][2] - dt.gradPx[1][2]) > 40, JSON.stringify(dt.gradPx));
+  check('× で閉じると空に戻り、次は主の頁から', dt.closed);
   check('空の色のメニューを開いている間は、下の名前と道具箱を隠す', mn.hidden.every(o => o === '0') && mn.shownAgain.every(o => o === '1'), JSON.stringify([mn.hidden, mn.shownAgain]));
   check('空の色のメニューで押すものは 44pt 以上', mn.small.length === 0, JSON.stringify(mn.small));
   check('詳細設定へ行って戻れる', mn.detail && mn.back);

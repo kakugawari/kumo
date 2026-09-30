@@ -1,5 +1,5 @@
 /* くもスケッチ - service worker */
-const CACHE = 'kumo-sketch-v22';
+const CACHE = 'kumo-sketch-v23';
 const ASSETS = [
   './',
   './index.html',
@@ -14,7 +14,8 @@ const ASSETS = [
   './dock.webp',
   './menu.webp',
   './menu-title.webp',
-  './menu-skies.webp'
+  './menu-skies.webp',
+  './detail.webp'
 ];
 
 self.addEventListener('install', e => {
