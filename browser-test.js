@@ -56,7 +56,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   const after = await p.evaluate(() => ({ disp: getComputedStyle(document.getElementById('title')).display, n: window.__app.strokes().length }));
   check('はじめるでタイトルが消え、空に触れると雲が置ける', after.disp === 'none' && after.n > 0, JSON.stringify(after));
   const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'dock.webp', 'sea-gold.jpg', 'sea-day.jpg', 'sea-night.jpg'].every(f => sw.includes("'./" + f + "'")));
+  check('絵をすべて、オフライン用に先読みする', ['title-bg.jpg', 'title-logo.png', 'dock.webp', 'menu.webp', 'menu-title.webp', 'menu-skies.webp'].every(f => sw.includes("'./" + f + "'")));
 
   // --- プレイ画面の空は、タイトルの空と同じ世界 (雲の上) ---
   const sky = await p.evaluate(async () => {
@@ -115,7 +115,8 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
       g.fillStyle = '#2a2420'; g.fillRect(0, 576, 600, 224); for (let x = 0; x < 600; x += 40) g.fillRect(x, 576 - ((x * 7) % 90), 30, 100);
       return c.toDataURL('image/png').split(',')[1]; }, white);
     const f = path.join(require('os').tmpdir(), 'kumo-photo-' + (white ? 'w' : 'g') + '.png'); fs.writeFileSync(f, Buffer.from(b64, 'base64')); return f; };
-  const pickPhoto = async (btn, file) => { await p.evaluate(() => document.getElementById('sheet').classList.add('open'));
+  // 写真は、空の色のメニュー → 詳細設定 の中にある
+  const pickPhoto = async (btn, file) => { await p.evaluate(() => { document.getElementById('sheet').classList.add('open'); document.querySelector('.smrow[data-go=smDetail]').click(); });
     const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.click(btn)]); await fc.setFiles(file); await p.waitForTimeout(700); };
   const hexd = (a, b) => { const h = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = h(a), B = h(b); return Math.round(Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2])); };
   const ph = {};
@@ -277,10 +278,7 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
     const Z = im.naturalHeight, n = im.naturalWidth / Z, corners = [];
     for (let i = 0; i < n; i++) for (const [x, y] of [[2, 2], [Z - 3, 2], [2, Z - 3], [Z - 3, Z - 3]]) corners.push(g.getImageData(i * Z + x, y, 1, 1).data[3]);
     const dock = document.querySelector('.dock').getBoundingClientRect();
-    const sea = document.getElementById('sea'), seaDefault = getComputedStyle(sea).display, groundDefault = getComputedStyle(document.getElementById('ground')).display;
-    document.querySelector('.gchip[data-g=sea]').click();
-    return { n: tools.length, uniq: new Set(pos).size, cells: n, cornerMax: Math.max(...corners), dockH: Math.round(dock.height),
-      seaDefault, groundDefault, seaOk: sea.complete && sea.naturalWidth > 0, seaPE: getComputedStyle(sea).pointerEvents, seaBottom: Math.round(sea.getBoundingClientRect().bottom) };
+    return { n: tools.length, uniq: new Set(pos).size, cells: n, cornerMax: Math.max(...corners), dockH: Math.round(dock.height) };
   });
   // 直前に指を離していると、道具箱が戻るまで (0.35秒) 引っ込んでいる。戻ってから測る
   await p.waitForFunction(() => !document.body.classList.contains('drawing')); await p.waitForTimeout(350);
@@ -299,78 +297,91 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   check('道具10個と空の色・戻すが、それぞれ別の絵を使う (dock.webp は見本から切り抜いた13個)', dk.n === 10 && dk.uniq === 12 && dk.cells === 13, dk.n + '個 / 絵' + dk.uniq + '種 / 絵の数' + dk.cells);
   check('道具の絵の四隅が透明 (市松模様が残っていない)', dk.cornerMax === 0, 'alpha最大=' + dk.cornerMax);
   check('道具箱が低い (空を広く見せる。3段だった頃は 233px)', dk.dockH <= 165, dk.dockH + 'px');
-  check('はじめの足もとは「なし」(雲海もシルエットも出さない)', dk.seaDefault === 'none' && dk.groundDefault === 'none', dk.seaDefault + '/' + dk.groundDefault);
-  check('雲海を選ぶと画面の下に敷かれ、指を通す', dk.seaOk && dk.seaPE === 'none' && dk.seaBottom === 932, JSON.stringify(dk));
-  // 雲海は空に合わせて絵を替える。金の絵の空の部分はマゼンタだったので、残っていないこと
-  const seaSw = await p.evaluate(async () => {
-    const pick = k => { document.querySelector('.preset[data-k=' + k + ']').click(); return document.getElementById('sea').getAttribute('src'); };
-    const r = { hiruma: pick('hiruma'), yoru: pick('yoru'), kumoue: pick('kumoue') };
-    let mg = 0;
-    for (const f of ['sea-gold.jpg', 'sea-day.jpg', 'sea-night.jpg']) { const im = new Image(); im.src = f; await im.decode();
-      const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
-      const d = g.getImageData(0, 0, c.width, c.height).data; for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 2] > 180 && d[i + 1] < 120) mg++; }
-    r.magenta = mg; return r;
-  });
-  check('雲海の絵が空に合わせて替わる (昼・夜・雲の上)', seaSw.hiruma === 'sea-day.jpg' && seaSw.yoru === 'sea-night.jpg' && seaSw.kumoue === 'sea-gold.jpg', JSON.stringify(seaSw));
-  check('雲海の絵にマゼンタが残っていない', seaSw.magenta === 0, 'px=' + seaSw.magenta);
   // 描いている間は道具箱が引っ込み、離すと戻る (途中で指が取り消されても戻る)
   const dr = await p.evaluate(async () => {
     const cv = document.getElementById('cv');
     function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
       cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
-    T('touchstart', 100, 820); const during = document.body.classList.contains('drawing');   // 雲海の上に触れても描ける
+    T('touchstart', 100, 820); const during = document.body.classList.contains('drawing');
     T('touchcancel', 0, 0); await new Promise(r => setTimeout(r, 500));
     return { during, after: document.body.classList.contains('drawing') };
   });
   check('描いている間は道具箱が引っ込み、指が取り消されても戻る', dr.during && !dr.after, JSON.stringify(dr));
-  // 保存する絵に雲海も入る
-  const sv = await p.evaluate(async () => {
-    const cv = document.getElementById('cv'), k = cv.width / 430;
-    const snapImg = new Image(); document.getElementById('saveBtn').click(); snapImg.src = document.getElementById('veilImg').src; await snapImg.decode();
-    document.getElementById('veilClose').click();
-    const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(snapImg, 0, 0);
-    let diff = 0; for (const x of [60, 215, 370]) { const a = g.getImageData(x * k, 900 * k, 1, 1).data, b = cv.getContext('2d').getImageData(x * k, 900 * k, 1, 1).data; diff += Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]); }
-    return diff;
-  });
-  check('保存する絵に雲海も入る', sv > 30, '下端の差=' + sv);
-  // 空の色や足もとを選んだ直後は、シートを薄くして裏を見せ、少しして戻す
-  const pk = await p.evaluate(async () => { const sh = document.getElementById('sheet'); sh.classList.add('open');
-    // 直前に空の色を選んだ名残で薄いままのことがあるので、元の濃さに戻るまで待ってから選ぶ
-    while (sh.classList.contains('peek') || +getComputedStyle(sh).opacity < 0.99) await new Promise(r => setTimeout(r, 100));
-    document.querySelector('.gchip[data-g=mount]').click(); await new Promise(r => setTimeout(r, 400)); const during = +getComputedStyle(sh).opacity;
-    await new Promise(r => setTimeout(r, 1500)); const after = +getComputedStyle(sh).opacity;
-    document.querySelector('.gchip[data-g=none]').click(); await new Promise(r => setTimeout(r, 1500)); sh.classList.remove('open'); return [during, after]; });
-  check('足もとを選んだ直後はシートが薄くなり、裏が見える。少しして戻る', pk[0] < 0.3 && pk[1] > 0.95, JSON.stringify(pk));
-  // --- 足もとのシルエット ---
-  const gd = await p.evaluate(async () => {
-    const el = document.getElementById('ground'), sea = document.getElementById('sea'), out = {};
-    const pick = (g, th) => { if (th) document.querySelector('.preset[data-k=' + th + ']').click(); document.querySelector('.gchip[data-g=' + g + ']').click(); };
-    const px = (x, yFromBottom) => { const k = el.width / 430; return [...el.getContext('2d').getImageData(Math.round(x * k), Math.round(el.height - yFromBottom * k), 1, 1).data]; };
-    // 選ぶと出て、雲海は消える。どれも画面の下端に付き、指は通す
-    out.shown = ['mount', 'city', 'hill', 'shore'].map(g => { pick(g, 'kumoue'); const r = el.getBoundingClientRect();
-      return getComputedStyle(el).display === 'block' && getComputedStyle(sea).display === 'none' && Math.round(r.bottom) === 932 && getComputedStyle(el).pointerEvents === 'none' && px(215, 5)[3] > 200; });
-    // シルエットの色は空に合わせて変わる (同じ山を、雲の上・昼・夜で)
-    const cols = ['kumoue', 'hiruma', 'yoru'].map(th => { pick('mount', th); return px(215, 5).slice(0, 3); });
-    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-    out.colDiff = Math.round(Math.min(dist(cols[0], cols[1]), dist(cols[0], cols[2]), dist(cols[1], cols[2])));
-    // 夜の街には灯りがともる (明るい画素がある)
-    pick('city', 'yoru'); { const d = el.getContext('2d').getImageData(0, 0, el.width, el.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 1] > 150) n++; out.lights = n; }
-    pick('city', 'kumoue'); { const d = el.getContext('2d').getImageData(0, 0, el.width, el.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 1] > 150) n++; out.dayLights = n; }
-    // 保存する絵にシルエットも入る
-    pick('mount', 'kumoue');
-    const cv = document.getElementById('cv'), k = cv.width / 430;
-    const snapImg = new Image(); document.getElementById('saveBtn').click(); snapImg.src = document.getElementById('veilImg').src; await snapImg.decode();
-    document.getElementById('veilClose').click();
-    const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(snapImg, 0, 0);
-    const a = g.getImageData(215 * k, 925 * k, 1, 1).data, b = el.getContext('2d').getImageData(Math.round(215 * el.width / 430), el.height - Math.round(7 * el.width / 430), 1, 1).data;
-    out.saveDiff = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
-    pick('none', 'kumoue');
+  // --- 空の色のメニュー (見本の絵に合わせた全画面) ---
+  const mn = await p.evaluate(async () => {
+    const A = window.__app, S = A.S, sh = document.getElementById('sheet'), out = {};
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const raf = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    document.getElementById('skyBtn').click(); await wait(500);
+    // 開いている間は、下の名前と道具箱を隠す (半透明のメニューに透けて重なった)
+    out.hidden = ['.top', '.dock'].map(q => getComputedStyle(document.querySelector(q)).opacity);
+    // 押すものはすべて 44pt 以上 (見えている頁のもの)
+    const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    out.small = [...sh.querySelectorAll('button, .lpill')].filter(vis).map(e => { const r = e.getBoundingClientRect(); return [e.id || e.dataset.w || e.dataset.k || e.dataset.go || e.textContent.trim().slice(0, 6), Math.round(r.width), Math.round(r.height)]; })
+      .filter(q => q[1] < 44 || q[2] < 44);
+    // 詳細設定・お気に入りへ行って戻れる。頁は1枚ずつ出る
+    document.querySelector('.smrow[data-go=smDetail]').click(); out.detail = !document.getElementById('smDetail').hidden && document.getElementById('smMain').hidden;
+    document.querySelector('#smDetail [data-go=smMain]').click(); out.back = !document.getElementById('smMain').hidden;
+    // 天気で雲の色味が変わる。雲だけを写した層の、見えている画素の平均の色で比べる
+    document.getElementById('smBack').click(); await wait(100);
+    const w = document.getElementById('windR'); w.value = 0; w.dispatchEvent(new Event('input'));
+    const cv = document.getElementById('cv');
+    function T(type, x, y) { const t = new Touch({ identifier: 1, target: cv, clientX: x, clientY: y });
+      cv.dispatchEvent(new TouchEvent(type, { touches: /end|cancel/.test(type) ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })); }
+    document.querySelector('[data-t=cumulus]').click(); T('touchstart', 80, 400); for (let i = 1; i <= 20; i++) T('touchmove', 80 + i * 14, 400); T('touchend', 0, 0);
+    function cloudMean() { const c = A.cloudC(), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < d.length; i += 16) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } return [r / n, g / n, b / n].map(Math.round); }
+    sh.classList.add('open'); await wait(100);
+    out.wx = {};
+    for (const k of ['hare', 'kumori', 'ame', 'kaminari', 'yuki', 'kiri']) {
+      document.querySelector('.wxb[data-w=' + k + ']').click();
+      while (A.rebuild(1)) { } out.wx[k] = cloudMean(); }
+    out.peek = sh.classList.contains('peek');
+    document.querySelector('.wxb[data-w=hare]').click(); while (A.rebuild(1)) { }
+    // 太陽・雲を隠す。雲を隠したまま描き始めると、雲が出る
+    const px = (x, y) => { const k = cv.width / 430; return [...cv.getContext('2d').getImageData(Math.round(x * k), Math.round(y * k), 1, 1).data]; };
+    const lumAt = (x, y) => { const q = px(x, y); return Math.round(q[0] * .3 + q[1] * .59 + q[2] * .11); };
+    sh.classList.remove('open', 'peek'); await raf();
+    const sx = S.sunX * 430, sy = S.sunY * 932, sunOnL = lumAt(sx, sy);
+    document.getElementById('tgSun').click(); await raf(); out.sun = [sunOnL, lumAt(sx, sy), document.getElementById('tgSun').getAttribute('aria-checked')];
+    document.getElementById('tgSun').click(); await raf();
+    const cloudOnL = lumAt(220, 400);
+    document.getElementById('tgCloud').click(); await raf(); const cloudOffL = lumAt(220, 400);
+    document.querySelector('[data-t=cumulus]').click(); T('touchstart', 215, 700); T('touchend', 0, 0); await raf();
+    out.clouds = [cloudOnL, cloudOffL, S.cloudsOn, document.getElementById('tgCloud').getAttribute('aria-checked')];
+    // 光の強さ: 太陽のそばの明るさが、0% では暗く、100% では明るい
+    const lk = document.getElementById('lightK'), setK = async v => { lk.value = v; lk.dispatchEvent(new Event('input')); await raf(); return lumAt(sx - 40, sy + 30); };
+    out.light = [await setK(0), await setK(70), await setK(100), document.getElementById('lightOut').textContent];
+    await setK(70);
+    // お気に入り: 今の空を加え、空を変えてから呼び出すと戻る。この端末に残る
+    try { localStorage.removeItem('kumo.favs'); } catch (e) { }
+    sh.classList.add('open'); document.querySelector('.act[data-go=smFav]').click();
+    document.querySelector('.preset[data-k=yuyake]').click(); document.querySelector('.wxb[data-w=ame]').click();
+    document.getElementById('favAdd').click();
+    document.querySelector('.preset[data-k=yoru]').click(); document.querySelector('.wxb[data-w=yuki]').click();
+    const favN = document.querySelectorAll('#favs .fav').length; let stored = 0; try { stored = JSON.parse(localStorage.getItem('kumo.favs')).length; } catch (e) { }
+    document.querySelector('#favs .fav').click();
+    out.fav = [favN, stored, S.theme, S.weather, document.querySelector('.preset[aria-pressed=true]').dataset.k, document.querySelector('.wxb[aria-pressed=true]').dataset.w];
+    // リセット: 1回目は構えるだけ、2回目で はじめの空 (雲の上・晴れ) に戻る
+    document.getElementById('resetBtn').click(); const armed = S.theme; document.getElementById('resetBtn').click();
+    out.reset = [armed, S.theme, S.weather, S.lightK];
+    sh.classList.remove('open', 'peek'); await wait(400);
+    out.shownAgain = ['.top', '.dock'].map(q => getComputedStyle(document.querySelector(q)).opacity);
+    document.getElementById('clearBtn').click(); document.getElementById('clearBtn').click();
     return out;
   });
-  check('足もと (山・街・丘・海辺) を選ぶと、画面の下に出る', gd.shown.every(Boolean), JSON.stringify(gd.shown));
-  check('足もとの色が空に合わせて変わる (雲の上・昼・夜)', gd.colDiff > 12, '差の最小=' + gd.colDiff);
-  check('夜の街には灯りがともり、昼はともらない', gd.lights > 30 && gd.dayLights === 0, gd.lights + ' / ' + gd.dayLights);
-  check('保存する絵に足もとも入る', gd.saveDiff < 30, '差=' + gd.saveDiff);
+  check('空の色のメニューを開いている間は、下の名前と道具箱を隠す', mn.hidden.every(o => o === '0') && mn.shownAgain.every(o => o === '1'), JSON.stringify([mn.hidden, mn.shownAgain]));
+  check('空の色のメニューで押すものは 44pt 以上', mn.small.length === 0, JSON.stringify(mn.small));
+  check('詳細設定へ行って戻れる', mn.detail && mn.back);
+  { const d = (a, b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])), L = q => q[0] * .3 + q[1] * .59 + q[2] * .11, h = mn.wx.hare;
+    const diffs = ['kumori', 'ame', 'kaminari', 'yuki', 'kiri'].map(k => d(mn.wx[k], h));
+    check('天気で雲の色味が変わる (晴れとの差がどれも 12 以上、雨は晴れより暗く、雪は雨より明るい)', diffs.every(v => v >= 12) && L(mn.wx.ame) < L(h) - 10 && L(mn.wx.yuki) > L(mn.wx.ame) + 20, JSON.stringify(mn.wx) + ' 差=' + diffs); }
+  check('天気を選んだ直後はメニューが薄くなり、裏の雲が見える', mn.peek);
+  check('太陽を隠すと、太陽の所が暗くなる', mn.sun[0] - mn.sun[1] > 40 && mn.sun[2] === 'false', JSON.stringify(mn.sun));
+  check('雲を隠すと消え、隠したまま描き始めると雲が出る', mn.clouds[0] - mn.clouds[1] > 20 && mn.clouds[2] === true && mn.clouds[3] === 'true', JSON.stringify(mn.clouds));
+  check('光の強さで太陽のまわりの明るさが変わる (0% < 70% < 100%)', mn.light[0] < mn.light[1] - 5 && mn.light[1] < mn.light[2] - 3 && mn.light[3] === '100%', JSON.stringify(mn.light));
+  check('お気に入りに加えた空を呼び出すと、その空 (色・天気) に戻る。端末に残る', mn.fav[0] === 1 && mn.fav[1] === 1 && mn.fav[2] === 'yuyake' && mn.fav[3] === 'ame' && mn.fav[4] === 'yuyake' && mn.fav[5] === 'ame', JSON.stringify(mn.fav));
+  check('リセットは 2 回押すと、はじめの空 (雲の上・晴れ・光70%) に戻る', mn.reset[0] !== 'kumoue' && mn.reset[1] === 'kumoue' && mn.reset[2] === 'hare' && mn.reset[3] === 0.7, JSON.stringify(mn.reset));
 
   // 1. 全画面のものが fixed で置かれていない (fixed だと iOS の短い枠に合わせて下が空く)
   const fixed = await p.evaluate(() => [...document.querySelectorAll('body *')]
@@ -400,18 +411,22 @@ function check(name, ok, info) { console.log((ok ? 'ok   ' : 'FAIL ') + name + (
   // 5. 安全域(iPhone 16 Plus 縦: 上59・下34)を差し込んでも、中身が 932 に収まる
   const fit = await p.evaluate(async () => {
     const st = document.createElement('style');
-    st.textContent = '.top{padding-top:69px!important}.dock{padding-bottom:44px!important}.sheet{padding-bottom:52px!important}';
+    st.textContent = '.top{padding-top:69px!important}.dock{padding-bottom:44px!important}.sheet{padding-top:67px!important;padding-bottom:46px!important}';
     document.head.appendChild(st);
     document.getElementById('sheet').classList.add('open');
-    await new Promise(r => setTimeout(r, 600));   // シートが上がりきるのを待つ (transition .38s)
-    const out = ['.top', '.dock', '#sheet'].map(s => document.querySelector(s).getBoundingClientRect())
+    await new Promise(r => setTimeout(r, 600));   // メニューが出きるのを待つ (transition .38s)
+    const out = ['.top', '.dock', '#sheet', '#smMain .smhead', '#smMain .smcards'].map(s => document.querySelector(s).getBoundingClientRect())
       .map(r => [Math.round(r.top), Math.round(r.bottom)]);
+    // メニューの中身: 頭は上の安全域 (59) より下、札の並びは下の安全域 (932-34) より上、題字は札に重ならない
+    const t = document.querySelector('.smtitle').getBoundingClientRect(), cards = document.querySelector('#smMain .smcards').getBoundingClientRect(),
+      head = document.querySelector('#smMain .smhead').getBoundingClientRect();
+    out.push(head.top >= 59 && cards.bottom <= 898 && t.bottom <= cards.top && t.top >= head.bottom);
     const sh = document.documentElement.scrollHeight;
     st.remove(); document.getElementById('sheet').classList.remove('open');
     return { out, sh };
   });
   await p.waitForTimeout(500);
-  check('安全域を足しても 0〜932 に収まる', fit.sh <= 932 && fit.out.every(r => r[0] >= 0 && r[1] <= 932), JSON.stringify(fit));
+  check('安全域を足しても 0〜932 に収まる (空の色のメニューも)', fit.sh <= 932 && fit.out.slice(0, -1).every(r => r[0] >= 0 && r[1] <= 932) && fit.out[fit.out.length - 1] === true, JSON.stringify(fit));
 
   // 6. 大きさが一瞬 0 で渡っても、前の大きさのまま (0 で組み直すと雲が全部画面の外になる)
   const z = await p.evaluate(() => {

@@ -34,16 +34,6 @@
   }
   canvas#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 
-  /* 足もとの雲海 (sea-gold / sea-day / sea-night.jpg、空の色で切り替える)。雲より手前なので、キャンバスの上に重ねる。指はキャンバスへ通す。
-     上のふちは空に溶かす。高さ 200px を画面の下に敷き、はみ出す左右は切る */
-  .sea{position:absolute;left:0;right:0;bottom:0;width:100%;height:200px;object-fit:cover;object-position:50% 100%;
-    z-index:1;pointer-events:none;
-    -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 16%);mask-image:linear-gradient(180deg,transparent 0,#000 16%);}
-  /* 足もとのシルエット (山・街・丘・海辺)。空の色に合わせて描き直す 1 枚のキャンバス */
-  .ground{position:absolute;left:0;right:0;bottom:0;width:100%;z-index:1;pointer-events:none;display:none;}
-  .gchips{display:flex;flex-wrap:wrap;gap:8px;}
-  .gchip{padding:8px 15px;border-radius:999px;font-size:12.5px;letter-spacing:.08em;}
-  .gchip[aria-pressed=true]{background:rgba(255,255,255,.9);color:#111827;border-color:transparent;}
   .ui{transition:opacity .9s ease;}
   body.dim .ui{opacity:.28;}
 
@@ -147,39 +137,117 @@
   input[type=range]::-moz-range-track{height:3px;background:rgba(255,255,255,.55);border-radius:3px;}
   input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:#fff;}
 
+  /* 空の色のメニュー。もらった見本の絵 (すみれ色のすりガラスの札を縦に重ねた1枚) に合わせた全画面の作り。
+     アイコン (menu.webp)・題字 (menu-title.webp)・空の色の丸 (menu-skies.webp) は見本の絵から切り抜いた。
+     札は半透明なので、裏の空がそのまま透けて見える。札は画面の下に寄せ、題字との間は空を見せる */
   .sheet{
-    position:absolute;left:0;right:0;bottom:0;z-index:20;
-    background:var(--panel-solid);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-    border-radius:26px 26px 0 0;border-top:1px solid var(--line);
-    padding:12px 18px calc(env(safe-area-inset-bottom) + 18px);
-    transform:translateY(103%);transition:transform .38s cubic-bezier(.22,.9,.3,1);
+    position:absolute;inset:0;z-index:20;color:#fff;
+    padding:calc(env(safe-area-inset-top) + 8px) 14px calc(env(safe-area-inset-bottom) + 12px);
+    background:linear-gradient(rgba(40,40,110,.20),rgba(40,40,110,.05) 40%,rgba(40,40,110,.22));
+    opacity:0;pointer-events:none;transform:translateY(24px);
+    transition:opacity .3s ease,transform .38s cubic-bezier(.22,.9,.3,1);
   }
-  .sheet.open{transform:translateY(0);}
-  /* 空の色や足もとを選んだ直後は、シートを薄くして裏の結果を見せる (シートが画面の下半分を覆うため) */
-  .sheet{transition:transform .38s cubic-bezier(.22,.9,.3,1),opacity .25s;}
-  .sheet.peek{opacity:.12;}
-  .grab{width:36px;height:4px;border-radius:4px;background:rgba(255,255,255,.28);margin:0 auto 14px;}
-  .sheet h2{font-size:10.5px;font-weight:400;letter-spacing:.24em;opacity:.5;margin:16px 0 9px;}
-  .sheet h2:first-of-type{margin-top:0;}
-  .presets{display:flex;gap:11px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
-  .presets::-webkit-scrollbar{display:none;}
-  .preset{flex:0 0 auto;border:0;background:none;padding:0;flex-direction:column;gap:6px;}
-  .preset i{display:block;width:50px;height:50px;border-radius:50%;border:2px solid transparent;box-shadow:0 3px 14px rgba(0,0,0,.35);}
-  .preset[aria-pressed=true] i{border-color:rgba(255,255,255,.95);}
-  .preset small{font-size:10.5px;opacity:.75;}
+  .sheet.open{opacity:1;pointer-events:auto;transform:none;}
+  /* メニューは半透明なので、下の名前と道具箱が透けて重なって見えた。開いている間は隠す */
+  body.menuopen .top,body.menuopen .dock,body.menuopen .hint{opacity:0!important;pointer-events:none;transition:opacity .2s;}
+  /* 空の色や天気を選んだ直後は、メニューを薄くして裏の結果を見せる */
+  .sheet.open.peek{opacity:.12;}
+  .smpage{position:absolute;inset:0;padding:inherit;display:flex;flex-direction:column;}
+  .smpage[hidden]{display:none!important;}
+  .smhead{display:flex;align-items:center;gap:10px;min-height:48px;}
+  .smhead .spacer{flex:1;}
+  .glass{
+    background:linear-gradient(165deg,rgba(150,140,250,.46),rgba(100,112,232,.42));
+    border:1px solid rgba(255,255,255,.46);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 8px 26px rgba(40,30,120,.22);
+    backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
+  }
+  .smpill{min-height:46px;padding:0 20px 0 12px;border-radius:999px;gap:8px;font-size:15px;letter-spacing:.2em;color:#fff;}
+  .smround{width:46px;height:46px;padding:0;border-radius:50%;justify-content:center;}
+  .mi2{display:block;flex:0 0 auto;width:26px;height:26px;background:url(menu.webp) no-repeat;background-size:2200% 100%;}
+  .smpill .mi2.b{width:18px;height:18px;margin-right:-2px;}
+  .smpill .mi2.c{width:34px;height:34px;margin:-6px 2px;}
+  .smtitle{display:block;width:196px;margin:6px auto 0;pointer-events:none;filter:drop-shadow(0 2px 10px rgba(60,40,140,.35));}
+  .smcards{margin-top:auto;display:flex;flex-direction:column;gap:9px;}
+  .smcard{border-radius:24px;padding:10px 8px 12px;}
+  .smcard .smch{padding-left:4px;}
+  .smch{display:flex;align-items:center;gap:10px;min-height:32px;margin:0 0 6px;
+    font-size:14.5px;letter-spacing:.2em;text-shadow:0 1px 4px rgba(40,30,110,.35);}
+  .smch .mi2{width:28px;height:28px;}
+  .smch .grow{flex:1;}
+  .smch button.more{width:44px;height:44px;margin:-8px -8px -8px 0;padding:0;border:0;background:none;
+    backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:center;}
+  .smch button.more .mi2{width:22px;height:22px;}
+  .presets{display:flex;justify-content:space-between;}
+  .preset{width:52px;height:52px;padding:0;border-radius:50%;border:0;background:none;
+    backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:center;}
+  .preset i{display:block;width:50px;height:50px;border-radius:50%;background:url(menu-skies.webp) no-repeat;background-size:600% 100%;
+    box-shadow:0 0 0 1px rgba(255,255,255,.55),0 3px 10px rgba(30,20,90,.25);}
+  .preset[aria-pressed=true] i{box-shadow:0 0 0 2.5px #fff,0 0 16px 3px rgba(190,220,255,.85);}
+  .wx{display:flex;justify-content:space-between;}
+  .wxb{width:56px;height:56px;padding:0;border-radius:50%;flex-direction:column;gap:1px;justify-content:center;color:#fff;
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.34);
+    backdrop-filter:none;-webkit-backdrop-filter:none;font-size:11.5px;letter-spacing:.08em;}
+  .wxb .mi2{width:26px;height:26px;}
+  .wxb[aria-pressed=true]{border-radius:18px;
+    background:linear-gradient(rgba(215,225,255,.62),rgba(160,180,255,.46));border-color:rgba(255,255,255,.85);
+    box-shadow:0 0 16px rgba(200,215,255,.6);}
+  .lrow{display:flex;gap:5px;}
+  .lpill{display:flex;align-items:center;gap:3px;min-height:46px;padding:0 5px 0 6px;border-radius:999px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.30);font-size:11px;letter-spacing:0;}
+  .lpill .mi2{width:21px;height:21px;}
+  .lpill.sl input::-webkit-slider-thumb{width:18px;height:18px;margin-top:-7.5px;}
+  .lpill.sw{flex:0 0 auto;}
+  .lpill.sl{flex:1;min-width:0;}
+  .lpill.sl input{flex:1;min-width:0;}
+  .lpill output{font-size:11px;min-width:28px;text-align:right;}
+  /* 入/切のつまみ。押せる所は札 (lpill) ぜんぶ */
+  .tg{position:relative;flex:0 0 auto;width:36px;height:22px;border-radius:999px;background:rgba(255,255,255,.28);transition:background .2s;}
+  .tg::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 4px rgba(20,20,80,.3);transition:transform .2s;}
+  [aria-checked=true] .tg{background:linear-gradient(90deg,#8FB8FF,#5E86F2);}
+  [aria-checked=true] .tg::after{transform:translateX(14px);}
+  button.lpill{color:#fff;backdrop-filter:none;-webkit-backdrop-filter:none;}
+  .smrow{width:100%;min-height:54px;border-radius:22px;padding:6px 6px 6px 14px;gap:12px;color:#fff;text-align:left;}
+  .smrow .mi2{width:30px;height:30px;}
+  .smrow span{flex:1;display:flex;flex-direction:column;gap:2px;font-size:14.5px;letter-spacing:.18em;}
+  .smrow em{font-style:normal;font-size:10px;letter-spacing:.04em;opacity:.85;}
+  .smrow .more{display:flex;width:36px;justify-content:center;}
+  .smrow .more .mi2{width:22px;height:22px;}
+  .acts{display:flex;border-radius:24px;padding:8px 2px;}
+  .act{flex:1;min-width:0;flex-direction:column;gap:3px;padding:2px 0;border:0;border-radius:16px;background:none;color:#fff;
+    backdrop-filter:none;-webkit-backdrop-filter:none;}
+  .act + .act{border-left:1px solid rgba(255,255,255,.26);border-radius:0;}
+  .act i.cir{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.38);}
+  .act .mi2{width:24px;height:24px;}
+  .act b{font-weight:600;font-size:12.5px;letter-spacing:.12em;}
+  .act small{font-size:9px;letter-spacing:0;opacity:.85;white-space:nowrap;}
+  .sub .smcards{margin-top:14px;overflow-y:auto;}
+  .sub h3{font-size:12px;font-weight:400;letter-spacing:.2em;margin:0 0 8px;opacity:.9;}
   .rows{display:flex;flex-wrap:wrap;gap:8px;}
   .row{
-    flex:1 1 46%;display:flex;align-items:center;justify-content:space-between;gap:10px;
-    background:rgba(255,255,255,.06);border-radius:12px;padding:8px 12px;font-size:12px;
+    flex:1 1 46%;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.26);border-radius:14px;padding:6px 12px;font-size:12.5px;
   }
   .row input[type=color]{
-    -webkit-appearance:none;appearance:none;border:1px solid var(--line);
-    width:32px;height:24px;border-radius:7px;background:none;padding:0;
+    -webkit-appearance:none;appearance:none;border:1px solid rgba(255,255,255,.5);
+    width:44px;height:32px;border-radius:9px;background:none;padding:0;
   }
   .row input[type=color]::-webkit-color-swatch-wrapper{padding:2px;}
-  .row input[type=color]::-webkit-color-swatch{border:0;border-radius:5px;}
+  .row input[type=color]::-webkit-color-swatch{border:0;border-radius:7px;}
   .row.wide{flex:1 1 100%;}
-  .hintline{font-size:11px;opacity:.5;margin:14px 0 0;line-height:1.7;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{min-height:44px;padding:0 16px;border-radius:999px;font-size:13px;letter-spacing:.08em;color:#fff;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.4);backdrop-filter:none;-webkit-backdrop-filter:none;}
+  .hintline{font-size:11px;opacity:.85;margin:10px 2px 0;line-height:1.7;}
+  .favs{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;}
+  .fav{position:relative;width:56px;height:56px;padding:0;border-radius:50%;border:0;
+    box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 3px 10px rgba(30,20,90,.25);backdrop-filter:none;-webkit-backdrop-filter:none;}
+  .favx{position:absolute;right:-10px;top:-10px;width:28px;height:28px;border-radius:50%;padding:0;justify-content:center;
+    font-size:14px;line-height:1;color:#fff;background:rgba(60,50,140,.85);border:1px solid rgba(255,255,255,.6);}
+  .favx::before{content:'';position:absolute;inset:-8px;}   /* 押せる所を 44pt に広げる */
+  .empty{font-size:12px;opacity:.85;margin:10px 2px 0;}
 
   .hint{
     position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);z-index:4;
@@ -243,8 +311,6 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<img class="sea" id="sea" src="sea-gold.jpg" alt="" style="display:none">
-<canvas class="ground" id="ground"></canvas>
 
 <div class="top ui">
   <button id="logo" class="logo" aria-expanded="false" aria-controls="menu">
@@ -279,35 +345,95 @@
   <div class="tools" id="tools"></div>
 </div></div>
 
-<div class="sheet" id="sheet">
-  <div class="grab"></div>
-  <h2>空の色</h2>
-  <div class="presets" id="presets"></div>
-  <h2>足もと</h2>
-  <div class="gchips" id="grounds"></div>
-  <h2>詳細</h2>
-  <div class="rows">
-    <div class="row"><label for="cTop">空・上</label><input type="color" id="cTop"></div>
-    <div class="row"><label for="cBot">空・下</label><input type="color" id="cBot"></div>
-    <div class="row"><label for="cSun" id="lbSun">太陽</label><input type="color" id="cSun"></div>
-    <div class="row"><label for="cCloud">雲</label><input type="color" id="cCloud"></div>
-    <div class="row wide"><label for="sunSize" id="lbSunSize">太陽の大きさ</label>
-      <input type="range" id="sunSize" min="20" max="180" value="90" style="max-width:56%"></div>
-    <div class="row wide"><label for="windR">風 — 雲が流れる速さ</label>
-      <input type="range" id="windR" min="0" max="100" value="5" style="max-width:56%"></div>
+<div class="sheet" id="sheet" role="dialog" aria-label="空の色">
+  <div class="smpage" id="smMain">
+    <div class="smhead">
+      <button class="smpill glass" id="smBack" aria-label="空に戻る"><i class="mi2 b" data-m="back"></i><i class="mi2 c" data-m="hcloud"></i>くもスケッチ</button>
+      <span class="spacer"></span>
+      <button class="smround glass" id="smHow" aria-label="あそびかた"><i class="mi2" data-m="book"></i></button>
+      <button class="smround glass" id="smSet" aria-label="設定"><i class="mi2" data-m="gear"></i></button>
+    </div>
+    <img class="smtitle" src="menu-title.webp" alt="くもスケッチ — 空に触れて、雲を置く">
+    <div class="smcards">
+      <section class="smcard glass">
+        <div class="smch"><i class="mi2" data-m="palette"></i><span class="grow">空の色</span>
+          <button class="more" data-go="smDetail" aria-label="空の色を細かく決める"><i class="mi2" data-m="chev"></i></button></div>
+        <div class="presets" id="presets"></div>
+      </section>
+      <section class="smcard glass">
+        <div class="smch"><i class="mi2" data-m="wsun"></i><span class="grow">天気</span></div>
+        <div class="wx" id="weather"></div>
+      </section>
+      <section class="smcard glass">
+        <div class="smch"><i class="mi2" data-m="lsun"></i><span class="grow">光と雲の調整</span>
+          <button class="more" data-go="smDetail" aria-label="太陽の大きさや風を決める"><i class="mi2" data-m="chev"></i></button></div>
+        <div class="lrow">
+          <button class="lpill sw" id="tgSun" role="switch" aria-checked="true"><i class="mi2" data-m="tsun"></i><span id="lbTgSun">太陽</span><i class="tg"></i></button>
+          <button class="lpill sw" id="tgCloud" role="switch" aria-checked="true"><i class="mi2" data-m="tcloud"></i><span>雲</span><i class="tg"></i></button>
+          <label class="lpill sl"><i class="mi2" data-m="tlight"></i><span>光の強さ</span>
+            <input type="range" id="lightK" min="0" max="100" value="70" aria-label="光の強さ"><output id="lightOut">70%</output></label>
+        </div>
+      </section>
+      <button class="smrow glass" data-go="smDetail"><i class="mi2" data-m="sliders"></i>
+        <span>詳細設定<em>空の上下の色、雲の色、太陽の大きさ、風の速さ、写真から</em></span><i class="more"><i class="mi2" data-m="chev"></i></i></button>
+      <div class="acts glass">
+        <button class="act" id="resetBtn"><i class="cir"><i class="mi2" data-m="reset"></i></i><b>リセット</b><small id="resetState">初期状態に戻す</small></button>
+        <button class="act" data-go="smFav"><i class="cir"><i class="mi2" data-m="star"></i></i><b>お気に入り</b><small>保存した空を呼び出す</small></button>
+        <button class="act" id="smSave"><i class="cir"><i class="mi2" data-m="camera"></i></i><b>画像を保存</b><small>今の空を保存する</small></button>
+        <button class="act" id="smShare"><i class="cir"><i class="mi2" data-m="share"></i></i><b>シェア</b><small>画像を共有する</small></button>
+      </div>
+    </div>
   </div>
-  <h2>写真から</h2>
-  <div class="gchips">
-    <button class="gchip" id="phColor" type="button">色と太陽を取る</button>
-    <button class="gchip" id="phUnder" type="button">下絵にする</button>
-    <button class="gchip" id="phOff" type="button" hidden>下絵を外す</button>
+
+  <div class="smpage sub" id="smDetail" hidden>
+    <div class="smhead"><button class="smpill glass" data-go="smMain"><i class="mi2 b" data-m="back"></i>詳細設定</button></div>
+    <div class="smcards">
+      <section class="smcard glass">
+        <h3>色</h3>
+        <div class="rows">
+          <div class="row"><label for="cTop">空・上</label><input type="color" id="cTop"></div>
+          <div class="row"><label for="cBot">空・下</label><input type="color" id="cBot"></div>
+          <div class="row"><label for="cSun" id="lbSun">太陽</label><input type="color" id="cSun"></div>
+          <div class="row"><label for="cCloud">雲</label><input type="color" id="cCloud"></div>
+        </div>
+      </section>
+      <section class="smcard glass">
+        <h3>太陽と風</h3>
+        <div class="rows">
+          <div class="row wide"><label for="sunSize" id="lbSunSize">太陽の大きさ</label>
+            <input type="range" id="sunSize" min="20" max="180" value="90" style="max-width:56%"></div>
+          <div class="row wide"><label for="windR">風 — 雲が流れる速さ</label>
+            <input type="range" id="windR" min="0" max="100" value="5" style="max-width:56%"></div>
+        </div>
+      </section>
+      <section class="smcard glass">
+        <h3>写真から</h3>
+        <div class="chips">
+          <button class="chip" id="phColor" type="button">色と太陽を取る</button>
+          <button class="chip" id="phUnder" type="button">下絵にする</button>
+          <button class="chip" id="phOff" type="button" hidden>下絵を外す</button>
+        </div>
+        <div class="rows" id="phRow" hidden style="margin-top:8px">
+          <div class="row wide"><label for="phAlpha">下絵の濃さ</label>
+            <input type="range" id="phAlpha" min="10" max="90" value="55" style="max-width:56%"></div>
+        </div>
+        <input type="file" id="phFile" accept="image/*" hidden>
+        <p class="hintline">写真は、この端末の中だけで使います。どこにも送りません。</p>
+      </section>
+    </div>
   </div>
-  <div class="rows" id="phRow" hidden style="margin-top:8px">
-    <div class="row wide"><label for="phAlpha">下絵の濃さ</label>
-      <input type="range" id="phAlpha" min="10" max="90" value="55" style="max-width:56%"></div>
+
+  <div class="smpage sub" id="smFav" hidden>
+    <div class="smhead"><button class="smpill glass" data-go="smMain"><i class="mi2 b" data-m="back"></i>お気に入り</button></div>
+    <div class="smcards">
+      <section class="smcard glass">
+        <button class="chip" id="favAdd" type="button">今の空をお気に入りに加える</button>
+        <div class="favs" id="favs"></div>
+        <p class="empty" id="favEmpty">まだありません。気に入った空ができたら、上のボタンで加えてください。</p>
+        <p class="hintline">丸を押すと、その空 (色・天気・太陽・光・風) に戻ります。雲はそのままです。</p>
+      </section>
+    </div>
   </div>
-  <input type="file" id="phFile" accept="image/*" hidden>
-  <p class="hintline">写真は、この端末の中だけで使います。どこにも送りません。<br>「太陽」(夜は「月」)を選んで空をなぞると光源が動き、雲の陰影も付け直されます。</p>
 </div>
 
 <div class="title" id="title">
@@ -320,10 +446,11 @@
 <div class="card" id="howCard" role="dialog" aria-label="あそびかた">
   <h2>あそびかた</h2>
   <ul>
-    <li>下の道具で雲を選び、空に触れる・なぞると雲が置けます。上の段は高い空、中の段は低い空の雲</li>
+    <li>下の段で雲を選び、空に触れる・なぞると雲が置けます</li>
     <li>「太陽」を選んで空をなぞると太陽が動き、雲の陰影が付け直されます</li>
     <li>「光」は太陽から差す光の筋、「消しゴム」は雲と光を消します</li>
-    <li>左下の太陽のボタンで空の色と風、↶ でひとなぞり戻せます</li>
+    <li>「空の色」で、空の色・天気 (雲の色味が変わります)・光の強さ・風などを決められます</li>
+    <li>「戻す」で、ひとなぞりぶん戻せます</li>
     <li>左上の名前から、音・保存・リセット</li>
     <li>窓の外の空を見ながら、写してみてください</li>
   </ul>
@@ -351,7 +478,7 @@
 <script>
 (function(){
 'use strict';
-var VER='v21';   /* sw.js の CACHE と揃える */
+var VER='v22';   /* sw.js の CACHE と揃える */
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 var W=0,H=0,dpr=1;
 function mk(){var c=document.createElement('canvas');return {c:c,x:c.getContext('2d',{willReadFrequently:true})};}
@@ -373,7 +500,8 @@ var THEMES={
 };
 var SKYKEYS=['top','skyMid','bot','hz','hzY','sea','sun','dark','mid','light','rim'];
 var S={theme:'kumoue',top:'',bot:'',sun:'',dark:'',mid:'',light:'',rim:'',
-       ground:'none',sunX:0.80,sunY:0.15,sunR:0.9,wind:0.05,tool:'cumulus',size:1};
+       sunX:0.80,sunY:0.15,sunR:0.9,wind:0.05,tool:'cumulus',size:1,
+       weather:'hare',sunOn:true,cloudsOn:true,lightK:0.7};
 (function(t){SKYKEYS.forEach(function(k){S[k]=t[k];});})(THEMES.kumoue);
 var strokes=[];
 
@@ -594,7 +722,25 @@ function fieldNoise(s,x0,y0,x1,y1){
       var wx=pc.ox+(x+0.5)/q,nz=nAt(wx*f1+o1x,wy*f1+o1y)*0.68+nAt(wx*f2+o2x,wy*f2+o2y)*0.32;
       D[i]=v*(1+(nz-0.5)*1.5*wob);}}
 }
-function lightKey(){return S.sunX+','+S.sunY+','+W+','+H+S.dark+S.light+S.rim+S.bot+S.skyMid;}
+function lightKey(){return S.sunX+','+S.sunY+','+W+','+H+S.dark+S.light+S.rim+S.bot+S.skyMid+S.weather;}
+/* 天気で雲の色味を変える。空の色 (S.light / S.dark / S.rim) に、天気ごとの色を混ぜる。
+   明るい面 (light)・陰 (dark)・ふちの光 (rim) を別々に寄せるので、曇りは灰色でのっぺり、
+   雨は青みの濃い灰、雷は紫がかった暗い灰にふちだけ青白く光る、雪は白く明るく陰も薄い、霧は陰が浅く乳白 */
+var WEATHER=[
+  ['hare','晴れ',null],
+  ['kumori','曇り',{light:['#C3C8D0',.72],dark:['#666E7C',.6],rim:['#D4D8DF',.85]}],
+  ['ame','雨',{light:['#98A2B1',.65],dark:['#3A4454',.62],rim:['#AEB8C6',.8]}],
+  ['kaminari','雷',{light:['#8C86AC',.62],dark:['#262239',.72],rim:['#D6CCFF',.55]}],
+  ['yuki','雪',{light:['#F7FAFF',.7],dark:['#AEBBD0',.6],rim:['#FFFFFF',.6]}],
+  ['kiri','霧',{light:['#E3E5EA',.55],dark:['#BFC3CB',.7],rim:['#ECEEF2',.7]}]
+];
+function cloudCols(){
+  var w=null;for(var i=0;i<WEATHER.length;i++)if(WEATHER[i][0]===S.weather)w=WEATHER[i][2];
+  if(!w)return{light:S.light,dark:S.dark,rim:S.rim};
+  return{light:mix(S.light,w.light[0],w.light[1]),dark:mix(S.dark,w.dark[0],w.dark[1]),rim:mix(S.rim,w.rim[0],w.rim[1])};
+}
+/* 光の強さ (0〜1、はじめ 0.7)。0.7 のときが前と同じ見え方になるよう、係数は S.lightK / 0.7 */
+function lightF(){return S.lightK/0.7;}
 /* 升目の範囲を塗る。太陽へ向かって濃さを足し合わせ (前と同じ)、積み上がる雲は
    「上にどれだけ雲が重なっているか」で底を暗くする (場の高さに頼らないので、どんな形でも自然になる) */
 function fieldLight(s,x0,y0,x1,y1){
@@ -602,7 +748,7 @@ function fieldLight(s,x0,y0,x1,y1){
   var sp=sunPos(),cx=pc.ox+pc.w/q/2+drift,cy=pc.oy+pc.h/q/2,ldx=sp.x-cx,ldy=sp.y-cy,L=Math.hypot(ldx,ldy)||1;
   ldx/=L;ldy/=L;
   var step=2.4*q/0.62,steps=cp.steps,absorb=cp.absorb,t0=cp.t0,t1=t0+cp.tw,typeA=cp.a;
-  var cd=hx(mix(S.dark,S.skyMid||S.top,0.3)),cl=hx(S.light),cr=hx(S.rim),cb=hx(S.bot);
+  var cc=cloudCols(),cd=hx(mix(cc.dark,S.skyMid||S.top,0.3)),cl=hx(cc.light),cr=hx(cc.rim),cb=hx(S.bot);
   var heap=(t==='cumulus'||t==='nyudo'||t==='une'),ustep=step*1.4;
   for(var y2=y0;y2<=y1;y2++){
     for(var x2=x0;x2<=x1;x2++){
@@ -815,9 +961,8 @@ function buildSky(){
     bg.addColorStop(0,rgba(S.hz,0));bg.addColorStop(0.5,rgba(mix(S.hz,'#ffffff',0.15),0.30));bg.addColorStop(1,rgba(S.hz,0));
     g.fillStyle=bg;g.fillRect(0,y2-bh,W,bh*2);
   }
-  if(!isNight())paintSunGlow(g);
+  if(!isNight()&&S.sunOn)paintSunGlow(g);
   if(under&&underOn){g.globalAlpha=underA;g.drawImage(under,0,0,W,H);g.globalAlpha=1;}   /* 下絵 (写真) は空の下地に焼き付ける */
-  drawGround();
   document.documentElement.style.backgroundColor=S.skyMid?S.sea:S.bot;
   sunSprite=null;
 }
@@ -895,15 +1040,14 @@ function composite(now){
   starA=clamp((0.30-skyLum())*3.4,0,1);
   if(starA>0.01){ctx.globalAlpha=starA*(0.75+0.25*Math.sin(now/2600));ctx.drawImage(starC.c,0,0,W,H);ctx.globalAlpha=1;}
 
-  if(isNight())drawMoon(now); else drawSun(now);
+  if(S.sunOn){if(isNight())drawMoon(now); else drawSun(now);}
 
   var dr=((drift%W)+W)%W;
   if(hasRays()){   /* 光の筋は雲の後ろ。雲の陰になる所は差さない */
     if(raysDirty||(Math.abs(dr-raysDr)>=RC/2&&now-raysT>100))shadeRays(dr,now);   /* 升目の半分流れたら数え直す */
-    ctx.globalCompositeOperation='lighter';ctx.drawImage(raysLit,0,0,W,H);ctx.globalCompositeOperation='source-over';
+    ctx.globalCompositeOperation='lighter';drawBoosted(raysLit,0,0,W,H);ctx.globalCompositeOperation='source-over';
   }
-  ctx.drawImage(cloud.c,dr,0,W,H);
-  ctx.drawImage(cloud.c,dr-W,0,W,H);
+  if(S.cloudsOn){ctx.drawImage(cloud.c,dr,0,W,H);ctx.drawImage(cloud.c,dr-W,0,W,H);}
   if(liveS&&liveS.pc&&liveS.pc.cv){   /* 描いている最中の雲は、その雲の絵だけを重ねる (なぞり始めはふわっと出す) */
     var pc=liveS.pc,offs=[0];if(pc.ox+dr<0)offs.push(W);if(pc.ox+pc.w/pc.q+dr>W)offs.push(-W);
     ctx.save();ctx.globalAlpha=liveA;
@@ -958,17 +1102,27 @@ function buildSunSprite(){
    毎コマ塗ると CPU4倍遅で 1コマ +25ms だったので、空の下地 (skyC) に焼き付ける */
 function paintSunGlow(g){
   var sp=sunPos(),m=Math.min(W,H),warm=mix(S.sun,'#FF9A3C',0.5);
-  var glow=m*(0.22+0.55*S.sunR);
-  g.globalCompositeOperation='lighter';
+  var glow=m*(0.22+0.55*S.sunR),f=lightF();
+  g.globalCompositeOperation='lighter';g.globalAlpha=Math.min(1,f);
   var gg=g.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,glow);
   gg.addColorStop(0,rgba(warm,.35));gg.addColorStop(.15,rgba(warm,.16));
   gg.addColorStop(.5,rgba(warm,.05));gg.addColorStop(1,rgba(warm,0));
   g.fillStyle=gg;g.fillRect(0,0,W,H);
+  if(f>1){g.globalAlpha=f-1;g.fillRect(0,0,W,H);}
   /* 足し算の光は青い空の上では白っぽくなるので、太陽のまわりは空の色そのものを橙へ寄せる */
   g.globalCompositeOperation='source-over';
   var tr=m*(0.30+0.35*S.sunR)*0.75,tg=g.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,tr);
   tg.addColorStop(0,rgba(warm,.55));tg.addColorStop(.3,rgba(warm,.22));tg.addColorStop(1,rgba(warm,0));
+  g.globalAlpha=Math.min(1,f);
   g.fillStyle=tg;g.beginPath();g.arc(sp.x,sp.y,tr,0,6.2832);g.fill();
+  g.globalAlpha=1;
+}
+/* 足し算で重ねる光を、光の強さぶん濃く/薄く貼る。1 を超えるぶんは、もう一度重ねて足す */
+function drawBoosted(img,x,y,w,h){
+  var f=lightF();if(f<=0.001)return;
+  ctx.globalAlpha=Math.min(1,f);ctx.drawImage(img,x,y,w,h);
+  if(f>1){ctx.globalAlpha=f-1;ctx.drawImage(img,x,y,w,h);}
+  ctx.globalAlpha=1;
 }
 function drawSun(now){
   var sp=sunPos(),puls=1+0.02*Math.sin(now/3400);
@@ -976,7 +1130,7 @@ function drawSun(now){
   if(!sunSprite||sunSpriteKey!==key){buildSunSprite();sunSpriteKey=key;}
   var R=sunSprite.R*puls;
   ctx.globalCompositeOperation='lighter';
-  ctx.drawImage(sunSprite.c,sp.x-R,sp.y-R,R*2,R*2);
+  drawBoosted(sunSprite.c,sp.x-R,sp.y-R,R*2,R*2);
   ctx.globalCompositeOperation='source-over';
 }
 var MARIA=[[-.34,-.20,.36,.30],[.16,-.36,.24,.20],[.28,.18,.32,.26],[-.16,.34,.22,.17],[.00,-.02,.18,.15],[-.40,.10,.16,.20]];
@@ -985,7 +1139,7 @@ function drawMoon(now){
   var r=m*0.028*(0.45+S.sunR)*puls;
 
   /* wide, faint moonlight in the sky */
-  ctx.globalCompositeOperation='lighter';
+  ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(1,lightF());
   var halo=m*(0.10+0.40*S.sunR);
   var hg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,halo);
   hg.addColorStop(0,rgba(S.sun,.34));hg.addColorStop(.10,rgba(S.sun,.14));
@@ -997,7 +1151,7 @@ function drawMoon(now){
   ctx.fillStyle=rg;ctx.beginPath();ctx.arc(sp.x,sp.y,r*2.6,0,6.2832);ctx.fill();
 
   /* the disc itself — solid, with limb darkening */
-  ctx.globalCompositeOperation='source-over';
+  ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
   var dg=ctx.createRadialGradient(sp.x-r*0.22,sp.y-r*0.24,r*0.08,sp.x,sp.y,r);
   dg.addColorStop(0,'#FEFEFF');
   dg.addColorStop(0.62,rgba(S.sun,1));
@@ -1061,6 +1215,7 @@ function cloudStart(x,y){
   if(t==='cirrus'){s.lanes=[];var n=7+Math.floor(s.r()*4);
     for(var k=0;k<n;k++)s.lanes.push({off:(k-(n-1)/2)*R*0.09+(s.r()-0.5)*R*0.05,len:R*(1.4+s.r()*1.4),on:0.7+s.r()*0.25,
       shift:s.r()*R*2,ph:s.r()*6.28,w:0.7+s.r()*0.5});}
+  if(!S.cloudsOn)setCloudsOn(true);   /* 雲を隠している間に描き始めたら、雲を出す */
   strokes.push(s);liveS=s;liveA=0.35;s.lx=s.x;s.ly=y;
   if(t!=='hikou'&&t!=='cirrus'){var d=[1e9,1e9,-1e9,-1e9],out=[];brushAt(s,s.x,y,0,out);depositAll(s,out,d);fieldUpdate(s,d);}
   return s;
@@ -1278,7 +1433,7 @@ function applyPhotoSky(r){
   var cc=r.cloud||mix(r.bot,'#ffffff',0.55);
   S.mid=cc;S.dark=mix(cc,S.skyMid,0.45);S.dark=mix(S.dark,'#131a2c',0.25);S.light=mix(cc,'#ffffff',0.55);S.rim=mix(S.sun,'#ffffff',0.3);
   if(r.sun){S.sunX=r.sun.x;S.sunY=r.sun.y;}
-  Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed','false');});
+  markPresets();
   syncInputs();updateCelestial();rebuildSoon();
 }
 function setUnder(c){
@@ -1296,102 +1451,15 @@ phFile.addEventListener('change',function(){
   loadPhoto(f,function(c){if(phMode==='under')setUnder(c);else applyPhotoSky(readSky(c));sheet.classList.remove('open');});   /* 結果が見えるよう、シートを閉じる */
 });
 
-/* ================= 足もと =================
-   なし / 雲海 (絵) / 山・街・丘・海辺 (1色のシルエットを計算で描く仮のもの。絵が来たら差し替える)。
-   シルエットの色は空から決める: 手前ほど暗く、遠いほど地平線の色に溶ける */
-var GROUNDS=[['none','なし'],['sea','雲海'],['mount','山'],['city','街'],['hill','丘'],['shore','海辺']];
-var GHZ={none:0.97,sea:null,mount:0.84,city:0.86,hill:0.87,shore:0.86};   /* 地平線の高さ (画面の割合) */
-function horizonY(){var v=GHZ[S.ground];return v==null?S.hzY:v;}
-var groundEl=document.getElementById('ground'),gx=groundEl.getContext('2d'),GH_=0.26;
-function drawGround(){
-  var kind=S.ground,show=!(kind==='none'||kind==='sea');
-  groundEl.style.display=show?'block':'none';
-  document.getElementById('sea').style.display=kind==='sea'?'block':'none';
-  if(!show||!W)return;
-  var gh=Math.round(H*GH_),top=H-gh;
-  groundEl.style.height=gh+'px';
-  if(groundEl.width!==Math.round(W*dpr)||groundEl.height!==Math.round(gh*dpr)){groundEl.width=Math.round(W*dpr);groundEl.height=Math.round(gh*dpr);}
-  var g=gx;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,gh);
-  var hzc=S.hz||S.bot,night=isNight();
-  var near=mix(S.skyMid?S.sea:S.bot,'#0A0D1A',night?0.9:0.78),mid=mix(near,hzc,0.28),far=mix(near,hzc,0.5);
-  var hy=horizonY()*H-top,r=rng({mount:11,city:22,hill:33,shore:44}[kind]);
-  function ridge(base,amp,oct,col,seed){
-    var rr=rng(seed),ph=[],k;for(k=0;k<oct;k++)ph.push([rr()*6.28,rr()*6.28]);
-    g.fillStyle=col;g.beginPath();g.moveTo(0,gh);
-    for(var x=0;x<=W;x+=3){var v=0,a=1,f=1,n=0;
-      for(k=0;k<oct;k++){v+=a*(1-Math.abs(Math.sin(x/W*Math.PI*f*2+ph[k][0])));n+=a;a*=0.5;f*=2.1;}
-      g.lineTo(x,base-amp*v/n);}
-    g.lineTo(W,gh);g.closePath();g.fill();
-  }
-  function hills(base,amp,col,seed){
-    var rr=rng(seed),p1=rr()*6.28,p2=rr()*6.28;
-    g.fillStyle=col;g.beginPath();g.moveTo(0,gh);
-    for(var x=0;x<=W;x+=4)g.lineTo(x,base-amp*(0.55+0.3*Math.sin(x/W*5.2+p1)+0.15*Math.sin(x/W*11+p2)));
-    g.lineTo(W,gh);g.closePath();g.fill();
-    return function(x){return base-amp*(0.55+0.3*Math.sin(x/W*5.2+p1)+0.15*Math.sin(x/W*11+p2));};
-  }
-  if(kind==='mount'){
-    ridge(hy,gh*0.42,4,far,5);ridge(hy+gh*0.16,gh*0.30,4,mid,9);ridge(hy+gh*0.36,gh*0.18,3,near,13);
-  }else if(kind==='city'){
-    var lay=[[hy,far,0.34,0.6],[hy+gh*0.2,mid,0.26,0.8],[hy+gh*0.42,near,0.2,1]];
-    for(var li=0;li<lay.length;li++){
-      var L=lay[li],x=-5;g.fillStyle=L[1];
-      while(x<W){var bw=(8+r()*22)*L[3],bh2=gh*L[2]*(0.3+r()*0.7)*(r()<0.08?1.8:1);
-        g.fillRect(x,L[0]-bh2,bw,gh);
-        if(r()<0.12){g.fillRect(x+bw*0.45,L[0]-bh2-gh*0.08,1.2,gh*0.08);}   /* アンテナ */
-        if(night&&li===2){g.save();g.fillStyle='rgba(255,214,140,.85)';   /* 夜は手前の窓に灯り */
-          for(var wy=L[0]-bh2+4;wy<gh-4;wy+=6)for(var wx=x+2;wx<x+bw-3;wx+=5)if(r()<0.22)g.fillRect(wx,wy,2,2.4);g.restore();g.fillStyle=L[1];}
-        x+=bw+(r()<0.3?r()*6:0);}
-    }
-  }else if(kind==='hill'){
-    hills(hy+gh*0.02,gh*0.28,far,3);hills(hy+gh*0.22,gh*0.26,mid,7);
-    var h3=hills(hy+gh*0.48,gh*0.30,near,17);
-    g.fillStyle=near;   /* 手前の丘に木を数本 */
-    for(var t=0;t<6;t++){var tx=W*(0.08+r()*0.84),ty=h3(tx)+2,th=gh*(0.08+r()*0.08);
-      g.fillRect(tx-1,ty-th,2.2,th);g.beginPath();g.arc(tx,ty-th,th*0.55,0,6.2832);g.arc(tx-th*0.35,ty-th*0.7,th*0.4,0,6.2832);g.arc(tx+th*0.35,ty-th*0.75,th*0.42,0,6.2832);g.fill();}
-  }else if(kind==='shore'){
-    /* 海: 地平線から手前へ、空を映した色が濃くなる。太陽の下に光の道 */
-    var sg=g.createLinearGradient(0,hy,0,gh);
-    sg.addColorStop(0,mix(hzc,S.skyMid||S.top,0.35));sg.addColorStop(1,mix(S.skyMid||S.top,'#0A0D1A',0.55));
-    g.fillStyle=sg;g.fillRect(0,hy,W,gh-hy);
-    var sx=S.sunX*W;g.fillStyle=rgba(mix(S.sun,'#ffffff',0.3),night?0.35:0.55);
-    for(var yy=hy+2;yy<gh;yy+=3){var wv=(4+(yy-hy)*0.5)*(0.5+r());if(r()<0.7)g.fillRect(sx-wv/2+(r()-0.5)*(yy-hy)*0.6,yy,wv,1.2);}
-    /* 右の岬と灯台 */
-    g.fillStyle=near;g.beginPath();g.moveTo(W*0.58,gh);
-    for(var cx=W*0.58;cx<=W;cx+=4){var u=(cx-W*0.58)/(W*0.42);g.lineTo(cx,hy+gh*0.06-gh*0.34*Math.pow(Math.sin(Math.min(1,u*1.3)*1.5708),0.8));}
-    g.lineTo(W,gh);g.closePath();g.fill();
-    var lx=W*0.82,ly=hy+gh*0.06-gh*0.34*Math.pow(Math.sin(Math.min(1,(lx-W*0.58)/(W*0.42)*1.3)*1.5708),0.8);
-    g.fillRect(lx-3,ly-gh*0.2,6,gh*0.2);g.fillRect(lx-5,ly-gh*0.2-3,10,3);
-    g.fillStyle=night?'rgba(255,226,160,.95)':rgba(near,1);g.fillRect(lx-2.5,ly-gh*0.2-8,5,5);
-  }
-}
+/* 地平線の高さ (画面の割合)。段つきの空 (雲の上・写真) は、画面のいちばん下の近くに金の帯を置く */
+function horizonY(){return 0.97;}
 var peekT=null;
 function peekSheet(){var sh=document.getElementById('sheet');sh.classList.add('peek');clearTimeout(peekT);peekT=setTimeout(function(){sh.classList.remove('peek');},1400);}
-var gEl=document.getElementById('grounds'),gBtns=[];
-GROUNDS.forEach(function(gd){
-  var b=document.createElement('button');b.type='button';b.className='gchip';b.dataset.g=gd[0];b.textContent=gd[1];
-  b.setAttribute('aria-pressed',String(gd[0]===S.ground));
-  b.addEventListener('click',function(){
-    S.ground=gd[0];gBtns.forEach(function(c){c.setAttribute('aria-pressed',String(c.dataset.g===S.ground));});
-    buildSky();wake();peekSheet();
-  });
-  gBtns.push(b);gEl.appendChild(b);
-});
-
-/* 雲海は空に合わせて絵を替える (金・昼・夜の3枚)。朝焼けと黄昏は金の絵の色を少し寄せる */
-var SEA={kumoue:['gold',''],yuyake:['gold',''],asayake:['gold','saturate(.9) hue-rotate(-10deg)'],
-  tasogare:['gold','brightness(.72) saturate(1.1) hue-rotate(-12deg)'],hiruma:['day',''],yoru:['night','']};
-function updateSea(){
-  var e=document.getElementById('sea'),v=isNight()?['night','']:(SEA[S.theme]||['gold','']),f='sea-'+v[0]+'.jpg';
-  if(e.getAttribute('src')!==f)e.setAttribute('src',f);
-  e.style.filter=v[1]||'none';
-}
 function updateCelestial(){
-  updateSea();
   var n=isNight(),w=n?'月':'太陽';
   for(var i=0;i<allTools.length;i++)
     if(allTools[i].dataset.t==='sun')allTools[i].querySelector('small').textContent=w;
-  document.getElementById('lbSun').textContent=w;
+  document.getElementById('lbSun').textContent=w;document.getElementById('lbTgSun').textContent=w;
   document.getElementById('lbSunSize').textContent=w+'の大きさ';
 }
 
@@ -1415,7 +1483,8 @@ logo.addEventListener('click',function(e){
 });
 menu.addEventListener('click',function(e){e.stopPropagation();});
 /* 空の色のシートが開いている間は、空の色のボタンを明るい札にする (閉じる所があちこちにあるので、シートを見張る) */
-new MutationObserver(function(){document.getElementById('skyBtn').classList.toggle('open',sheet.classList.contains('open'));})
+new MutationObserver(function(){var o=sheet.classList.contains('open');document.getElementById('skyBtn').classList.toggle('open',o);
+  document.body.classList.toggle('menuopen',o);if(!o)goPage('smMain');})
   .observe(sheet,{attributes:true,attributeFilter:['class']});
 document.getElementById('skyBtn').addEventListener('click',function(e){
   e.stopPropagation();closeMenu();sheet.classList.toggle('open');wake();
@@ -1428,13 +1497,102 @@ Object.keys(THEMES).forEach(function(k){
   var t=THEMES[k],b=document.createElement('button');
   b.className='preset';b.type='button';b.dataset.k=k;
   b.setAttribute('aria-pressed',String(k===S.theme));
-  b.innerHTML='<i style="background:linear-gradient(165deg,'+t.top+' 8%,'+t.bot+')"></i><small>'+t.name+'</small>';
+  b.setAttribute('aria-label',t.name);b.title=t.name;
+  b.innerHTML='<i style="background-position:'+(Object.keys(THEMES).indexOf(k)/5*100)+'% 0"></i>';   /* 見本の絵の丸 (menu-skies.webp) */
   b.addEventListener('click',function(){
     S.theme=k;SKYKEYS.forEach(function(p){S[p]=t[p];});
     Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed',String(c.dataset.k===k));});
     syncInputs();updateCelestial();rebuildSoon();wake();peekSheet();
   });
   presetsEl.appendChild(b);
+});
+function markPresets(){Array.prototype.forEach.call(presetsEl.children,function(c){c.setAttribute('aria-pressed',String(c.dataset.k===S.theme));});}
+
+/* 見本の絵 (menu.webp) に並んでいる順番 */
+var MENUIC=['back','hcloud','book','gear','palette','chev','wsun','hare','kumori','ame','kaminari','yuki','kiri',
+  'lsun','tsun','tcloud','tlight','sliders','reset','star','camera','share'];
+function menuIcon(el,k){el.style.backgroundPosition=(MENUIC.indexOf(k)/(MENUIC.length-1)*100)+'% 0';}
+Array.prototype.forEach.call(document.querySelectorAll('.mi2[data-m]'),function(el){menuIcon(el,el.dataset.m);});
+
+/* 天気: 雲の色味が変わる */
+var wxEl=document.getElementById('weather');
+WEATHER.forEach(function(w){
+  var b=document.createElement('button');b.type='button';b.className='wxb';b.dataset.w=w[0];
+  b.setAttribute('aria-pressed',String(w[0]===S.weather));
+  b.innerHTML='<i class="mi2"></i><span>'+w[1]+'</span>';menuIcon(b.firstChild,w[0]);
+  b.addEventListener('click',function(){setWeather(w[0]);wake();peekSheet();});
+  wxEl.appendChild(b);
+});
+function setWeather(k){
+  S.weather=k;
+  Array.prototype.forEach.call(wxEl.children,function(c){c.setAttribute('aria-pressed',String(c.dataset.w===k));});
+  rebuildSoon();
+}
+/* 太陽・雲を出す/隠す、光の強さ */
+var tgSun=document.getElementById('tgSun'),tgCloud=document.getElementById('tgCloud'),lightK=document.getElementById('lightK');
+function setSunOn(v){S.sunOn=v;tgSun.setAttribute('aria-checked',String(v));buildSky();}
+function setCloudsOn(v){S.cloudsOn=v;tgCloud.setAttribute('aria-checked',String(v));}
+tgSun.addEventListener('click',function(){setSunOn(!S.sunOn);wake();});
+tgCloud.addEventListener('click',function(){setCloudsOn(!S.cloudsOn);wake();});
+function setLightK(v){S.lightK=v;lightK.value=Math.round(v*100);document.getElementById('lightOut').textContent=Math.round(v*100)+'%';buildSky();}
+lightK.addEventListener('input',function(e){setLightK(e.target.value/100);wake();});
+
+/* メニューの中の行き来。data-go の先の頁だけを出す */
+function goPage(id){Array.prototype.forEach.call(document.querySelectorAll('.smpage'),function(p){p.hidden=p.id!==id;});}
+Array.prototype.forEach.call(document.querySelectorAll('[data-go]'),function(b){
+  b.addEventListener('click',function(){goPage(b.dataset.go);if(b.dataset.go==='smFav')drawFavs();});
+});
+document.getElementById('smBack').addEventListener('click',function(){sheet.classList.remove('open');});
+document.getElementById('smHow').addEventListener('click',function(){document.getElementById('howCard').classList.add('open');});
+document.getElementById('smSet').addEventListener('click',function(){document.getElementById('setCard').classList.add('open');});
+
+/* 空の設定をまとめて出し入れする (お気に入りとリセットで使う)。雲 (描いたもの) は含めない */
+var SKYSTATE=SKYKEYS.concat(['theme','sunX','sunY','sunR','wind','weather','sunOn','lightK']);
+function skyState(){var o={};SKYSTATE.forEach(function(k){o[k]=S[k];});return o;}
+function applySky(o){
+  SKYSTATE.forEach(function(k){if(o[k]!==undefined)S[k]=o[k];});
+  if(!THEMES[S.theme]&&S.theme!=='photo')S.theme='photo';
+  markPresets();setWeather(S.weather);setSunOn(S.sunOn);setLightK(S.lightK);
+  document.getElementById('sunSize').value=Math.round(S.sunR*100);document.getElementById('windR').value=Math.round(S.wind*100);
+  syncInputs();updateCelestial();rebuildSoon();
+}
+var DEFAULT_SKY=null;   /* はじめの空。読み込みの最後に取っておく */
+var resetArmed=false,resetT=null,resetState=document.getElementById('resetState');
+function disarmReset(){resetArmed=false;clearTimeout(resetT);resetState.textContent='初期状態に戻す';}
+document.getElementById('resetBtn').addEventListener('click',function(){
+  if(!resetArmed){resetArmed=true;resetState.textContent='もう一度押すと戻ります';resetT=setTimeout(disarmReset,4000);return;}
+  disarmReset();applySky(DEFAULT_SKY);setCloudsOn(true);peekSheet();
+});
+
+/* お気に入り。この端末の中 (localStorage) だけに残す。読めない・書けないときは、その場かぎりで持つ */
+var favMem=[];
+function loadFavs(){try{var v=JSON.parse(localStorage.getItem('kumo.favs')||'[]');if(Array.isArray(v))favMem=v;}catch(e){}return favMem;}
+function saveFavs(){try{localStorage.setItem('kumo.favs',JSON.stringify(favMem));}catch(e){}}
+function drawFavs(){
+  var box=document.getElementById('favs');box.textContent='';loadFavs();
+  document.getElementById('favEmpty').hidden=favMem.length>0;
+  favMem.forEach(function(f,i){
+    var b=document.createElement('button');b.type='button';b.className='fav';b.setAttribute('aria-label','お気に入りの空 '+(i+1));
+    b.style.background='linear-gradient(170deg,'+f.top+' 10%,'+(f.skyMid||f.top)+' 50%,'+f.bot+')';
+    b.addEventListener('click',function(){applySky(f);wake();goPage('smMain');peekSheet();});
+    var x=document.createElement('span');x.className='favx';x.setAttribute('role','button');x.setAttribute('aria-label','消す');x.textContent='×';
+    x.addEventListener('click',function(e){e.stopPropagation();favMem.splice(i,1);saveFavs();drawFavs();});
+    b.appendChild(x);box.appendChild(b);
+  });
+}
+document.getElementById('favAdd').addEventListener('click',function(){loadFavs();favMem.unshift(skyState());favMem=favMem.slice(0,12);saveFavs();drawFavs();});
+
+/* 画像を保存・シェア。シェアは端末の共有の仕組み (ファイルを渡せるとき) を使い、使えなければ保存の画面を出す */
+function showSaved(){veilImg.src=snapshot();veil.classList.add('open');}
+document.getElementById('smSave').addEventListener('click',showSaved);
+document.getElementById('smShare').addEventListener('click',function(){
+  var url=snapshot();
+  try{
+    var bin=atob(url.split(',')[1]),u8=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+    var file=new File([u8],'kumo-sketch.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'くもスケッチ'}).catch(function(){});return;}
+  }catch(e){}
+  showSaved();
 });
 cTop.addEventListener('input',function(e){S.top=e.target.value;updateCelestial();rebuildSoon();});
 cBot.addEventListener('input',function(e){S.bot=e.target.value;rebuildSoon();});
@@ -1445,6 +1603,7 @@ cCloud.addEventListener('input',function(e){
 document.getElementById('sunSize').addEventListener('input',function(e){S.sunR=e.target.value/100;buildSky();wake();});
 document.getElementById('windR').addEventListener('input',function(e){S.wind=e.target.value/100;wake();});
 syncInputs();updateCelestial();
+DEFAULT_SKY=skyState();
 
 var idleT=null;
 function wake(){
@@ -1481,19 +1640,6 @@ function snapshot(){
   var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;var g=c.getContext('2d');
   g.drawImage(cv,0,0);
   if(hadUnder){underOn=true;buildSky();}
-  var se=document.getElementById('sea'),r=se.getBoundingClientRect(),k=cv.width/W;
-  if(S.ground!=='none'&&S.ground!=='sea'){var gr=groundEl.getBoundingClientRect();g.drawImage(groundEl,Math.round(gr.left*k),Math.round(gr.top*k),Math.round(gr.width*k),Math.round(gr.height*k));}
-  if(S.ground==='sea'&&se.complete&&se.naturalWidth){
-    var t=document.createElement('canvas');t.width=Math.round(r.width*k);t.height=Math.round(r.height*k);var tg=t.getContext('2d');
-    /* object-fit: cover と同じ切り方 */
-    var sc=Math.max(t.width/se.naturalWidth,t.height/se.naturalHeight),dw=se.naturalWidth*sc,dh=se.naturalHeight*sc;
-    tg.filter=se.style.filter||'none';
-    tg.drawImage(se,(t.width-dw)/2,t.height-dh,dw,dh);tg.filter='none';
-    tg.globalCompositeOperation='destination-in';
-    var mg=tg.createLinearGradient(0,0,0,t.height);mg.addColorStop(0,'rgba(0,0,0,0)');mg.addColorStop(0.16,'#000');
-    tg.fillStyle=mg;tg.fillRect(0,0,t.width,t.height);
-    g.drawImage(t,Math.round(r.left*k),Math.round(r.top*k));
-  }
   return c.toDataURL('image/png');
 }
 document.getElementById('saveBtn').addEventListener('click',function(){
@@ -1555,7 +1701,7 @@ titleEl.querySelector('.bg').parentNode.addEventListener('click',function(e){if(
 buildNoise();buildGrain();resize();requestAnimationFrame(loop);
 
 /* テストから中身をのぞく入口 (browser-test.js が使う) */
-window.__app={readSky:readSky,under:function(){return under;},S:S,buildSky:buildSky,strokes:function(){return strokes;},rebuild:rebuild,lightCloud:lightCloud,lightKey:lightKey,raysLit:function(){return raysLit;},rays:function(){return rays.c;},raysN:function(){return raysN;},shadeRays:function(){var t=performance.now();shadeRays(((drift%W)+W)%W,t);return performance.now()-t;},cloudC:function(){return cloud.c;}};
+window.__app={readSky:readSky,under:function(){return under;},S:S,buildSky:buildSky,strokes:function(){return strokes;},rebuild:rebuild,lightCloud:lightCloud,lightKey:lightKey,raysLit:function(){return raysLit;},rays:function(){return rays.c;},raysN:function(){return raysN;},shadeRays:function(){var t=performance.now();shadeRays(((drift%W)+W)%W,t);return performance.now()-t;},cloudC:function(){return cloud.c;},cloudCols:cloudCols};
 
 /* service worker */
 if('serviceWorker' in navigator){
